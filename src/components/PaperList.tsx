@@ -1,30 +1,24 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import type { LibraryFilter, Paper } from "@/lib/types";
+import type { Paper } from "@/lib/types";
 
 type Props = {
   papers: Paper[];
   selectedId: string | null;
-  filter: LibraryFilter;
   search: string;
   onSelect: (id: string) => void;
-  onFilterChange: (f: LibraryFilter) => void;
   onSearchChange: (q: string) => void;
   onAddPaper: (url: string) => Promise<boolean>;
   importingPaper: boolean;
   importError: string | null;
 };
 
-const FILTERS: LibraryFilter[] = ["all", "unread", "read"];
-
 export function PaperList({
   papers,
   selectedId,
-  filter,
   search,
   onSelect,
-  onFilterChange,
   onSearchChange,
   onAddPaper,
   importingPaper,
@@ -32,12 +26,13 @@ export function PaperList({
 }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
+  const query = search.trim().toLowerCase();
   const visible = papers.filter((p) => {
-    if (filter === "read" && !p.is_read) return false;
-    if (filter === "unread" && p.is_read) return false;
-    if (search && !p.title.toLowerCase().includes(search.toLowerCase()))
-      return false;
-    return true;
+    if (!query) return true;
+    return (
+      p.title.toLowerCase().includes(query) ||
+      p.authors.some((author) => author.toLowerCase().includes(query))
+    );
   });
   const submitImport = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -135,42 +130,26 @@ export function PaperList({
         </div>
       )}
 
-      <div className="space-y-4 border-b border-border bg-surface-2 px-6 py-5">
-        <div className="relative">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search papers"
-            className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-all duration-300 ease-spring placeholder:text-muted/60 focus:border-white/20 focus:bg-background"
-          />
-        </div>
-        <div className="flex gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => onFilterChange(f)}
-              className={`flex-1 rounded-md border py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] transition-all duration-300 ease-spring ${
-                filter === f
-                  ? "border-accent bg-accent text-background"
-                  : "border-border bg-surface text-muted hover:border-white/20 hover:text-foreground"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+      <div className="border-b border-border bg-surface-2 px-6 py-5">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search papers"
+          className="w-full rounded-md border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-all duration-300 ease-spring placeholder:text-muted/60 focus:border-white/20 focus:bg-background"
+        />
       </div>
 
       <ul className="flex-1 overflow-y-auto p-2">
         {visible.length === 0 ? (
           <li className="mx-2 mt-2 rounded-xl border border-border bg-surface-2 px-6 py-10 text-center">
             <p className="font-display text-2xl leading-none tracking-[-0.03em] text-foreground">
-              No papers yet
+              {papers.length === 0 ? "No papers yet" : "No matches"}
             </p>
             <p className="mt-3 text-sm leading-6 text-muted">
-              Add a PDF or source URL to start building your research map.
+              {papers.length === 0
+                ? "Add a PDF or source URL to start building your research map."
+                : "Try a different search term."}
             </p>
           </li>
         ) : (

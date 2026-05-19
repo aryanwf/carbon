@@ -7,12 +7,7 @@ import { PaperGraph } from "@/components/PaperGraph";
 import { PaperList } from "@/components/PaperList";
 import { PaperReader } from "@/components/PaperReader";
 import { ResizeHandle } from "@/components/ResizeHandle";
-import type {
-  LibraryFilter,
-  Paper,
-  PaperConnection,
-  WorkspaceView,
-} from "@/lib/types";
+import type { Paper, PaperConnection, WorkspaceView } from "@/lib/types";
 
 const MIN_LIST = 260;
 const MAX_LIST = 520;
@@ -54,7 +49,6 @@ export function Workspace({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<WorkspaceView>("graph");
-  const [filter, setFilter] = useState<LibraryFilter>("all");
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<DetailTab>("overview");
 
@@ -238,10 +232,8 @@ export function Workspace({
               <PaperList
                 papers={papers}
                 selectedId={selectedId}
-                filter={filter}
                 search={search}
                 onSelect={setSelectedId}
-                onFilterChange={setFilter}
                 onSearchChange={setSearch}
                 onAddPaper={importPaper}
                 importingPaper={importingPaper}

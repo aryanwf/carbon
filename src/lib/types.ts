@@ -56,5 +56,4 @@ export type Profile = {
 };
 
 export type WorkspaceView = "graph" | "reader";
-export type LibraryFilter = "all" | "read" | "unread";
 export type SortKey = "added" | "published" | "legit" | "interesting";
