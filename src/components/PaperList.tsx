@@ -12,6 +12,8 @@ type Props = {
   onAddPaper: (url: string) => Promise<boolean>;
   importingPaper: boolean;
   importError: string | null;
+  importOpen: boolean;
+  onImportOpenChange: (open: boolean) => void;
 };
 
 export function PaperList({
@@ -23,8 +25,9 @@ export function PaperList({
   onAddPaper,
   importingPaper,
   importError,
+  importOpen,
+  onImportOpenChange,
 }: Props) {
-  const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const query = search.trim().toLowerCase();
   const visible = papers.filter((p) => {
@@ -41,31 +44,19 @@ export function PaperList({
 
     if (imported) {
       setImportUrl("");
-      setImportOpen(false);
+      onImportOpenChange(false);
     }
   };
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-6 py-5">
-        <div>
-          <h2 className="font-display text-2xl leading-none tracking-[-0.03em] text-foreground">
-            Library
-          </h2>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-            Papers and sources
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setImportOpen((open) => !open)}
-          className="group flex items-center gap-2 rounded-md bg-accent py-1 pl-4 pr-1 text-xs font-medium text-background transition-all duration-300 ease-spring hover:bg-[#ddd7cb] active:scale-[0.98]"
-        >
-          <span>Add Paper</span>
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-black/10 transition-transform duration-300 ease-spring group-hover:scale-105 group-hover:bg-black/15">
-            <span className="mb-[2px] text-lg leading-none">+</span>
-          </div>
-        </button>
+      <header className="border-b border-border px-6 py-5">
+        <h2 className="font-display text-2xl leading-none tracking-[-0.03em] text-foreground">
+          Library
+        </h2>
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+          Papers and sources
+        </p>
       </header>
 
       {importOpen && (
@@ -85,7 +76,7 @@ export function PaperList({
               </div>
               <button
                 type="button"
-                onClick={() => setImportOpen(false)}
+                onClick={() => onImportOpenChange(false)}
                 disabled={importingPaper}
                 className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted transition-all duration-300 ease-spring hover:border-white/20 hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -112,7 +103,7 @@ export function PaperList({
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setImportOpen(false)}
+                onClick={() => onImportOpenChange(false)}
                 disabled={importingPaper}
                 className="rounded-md border border-border bg-surface-2 px-4 py-2 text-xs font-medium text-muted transition-all duration-300 ease-spring hover:border-white/20 hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >

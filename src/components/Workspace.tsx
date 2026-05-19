@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { PaperDetail } from "@/components/PaperDetail";
@@ -54,8 +55,8 @@ export function Workspace({
 
   const [listWidth, setListWidth] = useState(320);
   const [detailWidth, setDetailWidth] = useState(420);
-  const [listCollapsed, setListCollapsed] = useState(false);
   const [detailCollapsed, setDetailCollapsed] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [papers, setPapers] = useState<Paper[]>(initialPapers);
   const [connections, setConnections] =
@@ -213,9 +214,8 @@ export function Workspace({
         view={view}
         userLabel={user?.email ?? "Signed in"}
         onViewChange={setView}
-        listCollapsed={listCollapsed}
         detailCollapsed={detailCollapsed}
-        onToggleList={() => setListCollapsed((v) => !v)}
+        onAddPaper={() => setImportOpen(true)}
         onToggleDetail={() => setDetailCollapsed((v) => !v)}
         onSignOut={() => {
           void signOut();
@@ -223,26 +223,24 @@ export function Workspace({
       />
 
       <div className="flex min-h-0 flex-1 gap-3">
-        {!listCollapsed && (
-          <>
-            <div
-              style={{ width: listWidth }}
-              className="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_2px_8px_rgba(244,241,234,0.035)]"
-            >
-              <PaperList
-                papers={papers}
-                selectedId={selectedId}
-                search={search}
-                onSelect={setSelectedId}
-                onSearchChange={setSearch}
-                onAddPaper={importPaper}
-                importingPaper={importingPaper}
-                importError={importError}
-              />
-            </div>
-            <ResizeHandle onResize={resizeList} ariaLabel="Resize library" />
-          </>
-        )}
+        <div
+          style={{ width: listWidth }}
+          className="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_2px_8px_rgba(244,241,234,0.035)]"
+        >
+          <PaperList
+            papers={papers}
+            selectedId={selectedId}
+            search={search}
+            onSelect={setSelectedId}
+            onSearchChange={setSearch}
+            onAddPaper={importPaper}
+            importingPaper={importingPaper}
+            importError={importError}
+            importOpen={importOpen}
+            onImportOpenChange={setImportOpen}
+          />
+        </div>
+        <ResizeHandle onResize={resizeList} ariaLabel="Resize library" />
 
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_2px_8px_rgba(244,241,234,0.035)]">
           {libraryLoading ? (
@@ -285,9 +283,8 @@ type TopBarProps = {
   view: WorkspaceView;
   userLabel: string;
   onViewChange: (v: WorkspaceView) => void;
-  listCollapsed: boolean;
   detailCollapsed: boolean;
-  onToggleList: () => void;
+  onAddPaper: () => void;
   onToggleDetail: () => void;
   onSignOut: () => void;
 };
@@ -296,22 +293,21 @@ function TopBar({
   view,
   userLabel,
   onViewChange,
-  listCollapsed,
   detailCollapsed,
-  onToggleList,
+  onAddPaper,
   onToggleDetail,
   onSignOut,
 }: TopBarProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between rounded-xl border border-border bg-surface px-4 shadow-[0_2px_8px_rgba(244,241,234,0.035)]">
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={onToggleList}
-          className="group flex h-9 items-center justify-center rounded-md border border-border bg-surface-2 px-4 text-xs font-medium text-muted transition-all duration-300 ease-spring hover:border-white/20 hover:text-foreground active:scale-[0.98]"
-        >
-          {listCollapsed ? "Show Library" : "Hide Library"}
-        </button>
+      <div className="flex items-center gap-3">
+        <Image
+          src="/web-app-manifest-192x192.png"
+          alt=""
+          width={32}
+          height={32}
+          className="h-8 w-8 rounded-md"
+        />
         <div className="flex items-baseline gap-2">
           <span className="font-display text-3xl leading-none tracking-[-0.04em] text-foreground">
             Carbon
@@ -320,6 +316,14 @@ function TopBar({
             Research
           </span>
         </div>
+        <button
+          type="button"
+          onClick={onAddPaper}
+          aria-label="Add paper"
+          className="group ml-1 flex h-8 w-8 items-center justify-center rounded-md bg-accent text-background transition-all duration-300 ease-spring hover:bg-[#ddd7cb] active:scale-[0.98]"
+        >
+          <span className="mb-[1px] text-xl leading-none">+</span>
+        </button>
       </div>
 
       <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-2 p-1">
