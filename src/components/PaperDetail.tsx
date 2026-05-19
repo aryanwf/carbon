@@ -1,5 +1,6 @@
 "use client";
 
+import katex from "katex";
 import type { Paper } from "@/lib/types";
 
 type Tab = "overview" | "chat" | "notes";
@@ -66,7 +67,7 @@ export function PaperDetail({ paper, tab, onTabChange }: Props) {
               </h4>
               {paper.abstract ? (
                 <p className="text-sm leading-7 text-foreground">
-                  {paper.abstract}
+                  <LatexText text={paper.abstract} />
                 </p>
               ) : (
                 <p className="text-sm italic text-muted">
@@ -89,4 +90,61 @@ export function PaperDetail({ paper, tab, onTabChange }: Props) {
       </div>
     </div>
   );
+}
+
+type LatexPart =
+  | { kind: "text"; value: string }
+  | { kind: "math"; value: string; displayMode: boolean };
+
+function LatexText({ text }: { text: string }) {
+  return parseLatexText(text).map((part, index) => {
+    if (part.kind === "text") {
+      return <span key={index}>{part.value}</span>;
+    }
+
+    try {
+      return (
+        <span
+          key={index}
+          dangerouslySetInnerHTML={{
+            __html: katex.renderToString(part.value, {
+              displayMode: part.displayMode,
+              throwOnError: false,
+              strict: false,
+            }),
+          }}
+        />
+      );
+    } catch {
+      return <span key={index}>{part.value}</span>;
+    }
+  });
+}
+
+function parseLatexText(text: string) {
+  const parts: LatexPart[] = [];
+  const pattern = /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ kind: "text", value: text.slice(lastIndex, match.index) });
+    }
+
+    const inlineMath = match[1];
+    const displayMath = match[2];
+    parts.push({
+      kind: "math",
+      value: inlineMath ?? displayMath ?? "",
+      displayMode: displayMath !== undefined,
+    });
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ kind: "text", value: text.slice(lastIndex) });
+  }
+
+  return parts;
 }
