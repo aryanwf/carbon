@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS papers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Existing DBs: CREATE TABLE IF NOT EXISTS does not add new columns.
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS embedding VECTOR(1536);
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS bs_score JSONB;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE papers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE TABLE IF NOT EXISTS user_papers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -72,7 +80,36 @@ CREATE INDEX IF NOT EXISTS banned_users_user_idx
 CREATE INDEX IF NOT EXISTS banned_users_email_idx
   ON banned_users (LOWER(email));
 
+CREATE INDEX IF NOT EXISTS papers_embedding_idx
+  ON papers USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
 ALTER TABLE papers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_papers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE paper_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION match_papers(
+  query_embedding VECTOR(1536),
+  exclude_id TEXT,
+  match_threshold FLOAT DEFAULT 0.7,
+  match_count INT DEFAULT 10
+)
+RETURNS TABLE (
+  id TEXT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    papers.id,
+    1 - (papers.embedding <=> query_embedding) AS similarity
+  FROM papers
+  WHERE papers.embedding IS NOT NULL
+    AND papers.id <> exclude_id
+    AND 1 - (papers.embedding <=> query_embedding) > match_threshold
+  ORDER BY papers.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;

@@ -11,7 +11,7 @@ import type { Paper } from "@/lib/types";
 const PAPERS_BUCKET = "papers";
 const MAX_PDF_BYTES = 30 * 1024 * 1024;
 const MAX_CONTEXT_CHARS = 12_000;
-const OPENROUTER_MODEL = "openai/gpt-oss-120b";
+const OPENROUTER_MODEL = "openai/gpt-oss-120b:free";
 
 type ExtractedPaper = {
   id: string;
