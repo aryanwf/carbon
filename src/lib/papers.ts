@@ -35,7 +35,7 @@ export async function getUserLibrary(userId: string): Promise<PapersResponse> {
   const { data: papers, error: papersError } = await supabaseAdmin
     .from("papers")
     .select(
-      "id,title,authors,abstract,published,source_url,pdf_url,categories,summary,bs_score,is_public,created_at,updated_at",
+      "id,title,authors,abstract,published,source_url,pdf_url,categories",
     )
     .in("id", paperIds);
 

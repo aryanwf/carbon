@@ -29,6 +29,10 @@ type PapersResponse = {
   connections: PaperConnection[];
 };
 
+type ImportPaperResponse = {
+  paper: Paper;
+};
+
 type WorkspaceProps = {
   initialPapers: Paper[];
   initialConnections: PaperConnection[];
@@ -66,6 +70,8 @@ export function Workspace({
   const [libraryError, setLibraryError] = useState<string | null>(
     initialLibraryError,
   );
+  const [importingPaper, setImportingPaper] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -145,6 +151,52 @@ export function Workspace({
       Math.max(MIN_DETAIL, Math.min(MAX_DETAIL, w - delta)),
     );
   };
+  const importPaper = async (url: string) => {
+    const accessToken = accessTokenRef.current;
+
+    if (!accessToken) {
+      setImportError("Missing access token");
+      return false;
+    }
+
+    setImportingPaper(true);
+    setImportError(null);
+
+    try {
+      const response = await fetch("/api/papers", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url }),
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      const payload = contentType.includes("application/json")
+        ? await response.json()
+        : { error: await response.text() };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to import paper");
+      }
+
+      const { paper } = payload as ImportPaperResponse;
+      setPapers((currentPapers) => [
+        paper,
+        ...currentPapers.filter((currentPaper) => currentPaper.id !== paper.id),
+      ]);
+      setSelectedId(paper.id);
+      loadedLibraryUserIdRef.current = userId;
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to import paper";
+      setImportError(message);
+      return false;
+    } finally {
+      setImportingPaper(false);
+    }
+  };
 
   if (loading) {
     return <AuthStatus title="Loading Carbon" message="Checking session." />;
@@ -191,7 +243,9 @@ export function Workspace({
                 onSelect={setSelectedId}
                 onFilterChange={setFilter}
                 onSearchChange={setSearch}
-                onAddClick={() => {}}
+                onAddPaper={importPaper}
+                importingPaper={importingPaper}
+                importError={importError}
               />
             </div>
             <ResizeHandle onResize={resizeList} ariaLabel="Resize library" />

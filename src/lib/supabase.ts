@@ -10,11 +10,9 @@ export type PaperRow = {
   source_url: string | null;
   pdf_url: string | null;
   categories: unknown;
-  summary: string | null;
-  bs_score: unknown;
-  is_public: boolean;
-  created_at: string;
-  updated_at: string;
+  summary?: string | null;
+  bs_score?: unknown;
+  is_public?: boolean;
 };
 
 export type UserPaperRow = {
@@ -237,13 +235,13 @@ export function mergePaperRows(paper: PaperRow, userPaper: UserPaperRow): Paper 
     source_url: paper.source_url,
     pdf_url: paper.pdf_url,
     categories: stringArray(paper.categories),
-    summary: paper.summary,
+    summary: paper.summary ?? null,
     added_at: userPaper.added_at,
     read_at: userPaper.read_at,
     is_read: userPaper.is_read,
     notes: userPaper.notes,
     bs_score: bsScore(paper.bs_score),
-    is_public: paper.is_public,
+    is_public: paper.is_public ?? false,
   };
 }
 
