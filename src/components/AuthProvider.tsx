@@ -22,9 +22,15 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({
+  children,
+  initialSession,
+}: {
+  children: ReactNode;
+  initialSession: Session | null;
+}) {
+  const [session, setSession] = useState<Session | null>(initialSession);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

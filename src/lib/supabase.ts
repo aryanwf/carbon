@@ -91,6 +91,14 @@ export type AuthenticatedRequestUser = {
   username: string | null;
 };
 
+export function toAuthenticatedRequestUser(user: User): AuthenticatedRequestUser {
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    username: getUserName(user),
+  };
+}
+
 type AuthenticatedRequest =
   | { user: AuthenticatedRequestUser; response?: never }
   | { user?: never; response: Response };
@@ -151,11 +159,7 @@ async function getRequestUser(
     return null;
   }
 
-  return {
-    id: data.user.id,
-    email: data.user.email ?? null,
-    username: getUserName(data.user),
-  };
+  return toAuthenticatedRequestUser(data.user);
 }
 
 type BannedUserRow = {
@@ -165,7 +169,7 @@ type BannedUserRow = {
   reason: string | null;
 };
 
-async function getBannedReason(user: AuthenticatedRequestUser) {
+export async function getBannedReason(user: AuthenticatedRequestUser) {
   const { data, error } = await getSupabaseAdmin()
     .from("banned_users")
     .select("user_id,email,username_pattern,reason");

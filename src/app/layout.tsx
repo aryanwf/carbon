@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Instrument_Serif, JetBrains_Mono } from "next/font/google";
-import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -37,7 +36,7 @@ export default function RootLayout({
       className={`${jetbrainsMono.variable} ${geistSans.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background text-foreground font-sans selection:bg-accent selection:text-background">
-        <AuthProvider>{children}</AuthProvider>
+        {children}
       </body>
     </html>
   );

@@ -1,12 +1,8 @@
 import {
   envErrorResponse,
-  getSupabaseAdmin,
-  mapPaperConnectionRow,
-  mergePaperRows,
   requireRequestUser,
-  type PaperRow,
-  type UserPaperRow,
 } from "@/lib/supabase";
+import { getUserLibrary } from "@/lib/papers";
 
 export const runtime = "nodejs";
 
@@ -18,62 +14,16 @@ export async function GET(request: Request) {
   }
 
   const userId = auth.user.id;
-  let supabaseAdmin;
 
   try {
-    supabaseAdmin = getSupabaseAdmin();
+    return Response.json(await getUserLibrary(userId));
   } catch (error) {
-    return envErrorResponse(error);
+    if (error instanceof Error && error.message.includes("is required")) {
+      return envErrorResponse(error);
+    }
+
+    const message =
+      error instanceof Error ? error.message : "Failed to load papers";
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  const { data: userPapers, error: userPapersError } = await supabaseAdmin
-    .from("user_papers")
-    .select("*")
-    .eq("user_id", userId)
-    .order("added_at", { ascending: false });
-
-  if (userPapersError) {
-    return Response.json({ error: userPapersError.message }, { status: 500 });
-  }
-
-  const userPaperRows = (userPapers ?? []) as UserPaperRow[];
-  const paperIds = userPaperRows.map((row) => row.paper_id);
-
-  if (paperIds.length === 0) {
-    return Response.json({ papers: [], connections: [] });
-  }
-
-  const { data: papers, error: papersError } = await supabaseAdmin
-    .from("papers")
-    .select(
-      "id,title,authors,abstract,published,source_url,pdf_url,categories,summary,bs_score,is_public,created_at,updated_at",
-    )
-    .in("id", paperIds);
-
-  if (papersError) {
-    return Response.json({ error: papersError.message }, { status: 500 });
-  }
-
-  const papersById = new Map(
-    ((papers ?? []) as PaperRow[]).map((paper) => [paper.id, paper]),
-  );
-  const mergedPapers = userPaperRows.flatMap((userPaper) => {
-    const paper = papersById.get(userPaper.paper_id);
-    return paper ? [mergePaperRows(paper, userPaper)] : [];
-  });
-
-  const { data: connections, error: connectionsError } = await supabaseAdmin
-    .from("paper_connections")
-    .select("id,paper_a,paper_b,strength,relation_type")
-    .in("paper_a", paperIds)
-    .in("paper_b", paperIds);
-
-  if (connectionsError) {
-    return Response.json({ error: connectionsError.message }, { status: 500 });
-  }
-
-  return Response.json({
-    papers: mergedPapers,
-    connections: (connections ?? []).map(mapPaperConnectionRow),
-  });
 }

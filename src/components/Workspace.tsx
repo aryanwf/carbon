@@ -29,9 +29,22 @@ type PapersResponse = {
   connections: PaperConnection[];
 };
 
-export function Workspace() {
+type WorkspaceProps = {
+  initialPapers: Paper[];
+  initialConnections: PaperConnection[];
+  initialLibraryError: string | null;
+  initialLibraryUserId: string | null;
+};
+
+export function Workspace({
+  initialPapers,
+  initialConnections,
+  initialLibraryError,
+  initialLibraryUserId,
+}: WorkspaceProps) {
   const { session, user, loading, error, signInWithGoogle, signOut } = useAuth();
   const accessTokenRef = useRef<string | null>(null);
+  const loadedLibraryUserIdRef = useRef<string | null>(initialLibraryUserId);
   const userId = session?.user.id ?? null;
   accessTokenRef.current = session?.access_token ?? null;
 
@@ -46,18 +59,25 @@ export function Workspace() {
   const [listCollapsed, setListCollapsed] = useState(false);
   const [detailCollapsed, setDetailCollapsed] = useState(false);
 
-  const [papers, setPapers] = useState<Paper[]>(EMPTY_PAPERS);
+  const [papers, setPapers] = useState<Paper[]>(initialPapers);
   const [connections, setConnections] =
-    useState<PaperConnection[]>(EMPTY_CONNECTIONS);
+    useState<PaperConnection[]>(initialConnections);
   const [libraryLoading, setLibraryLoading] = useState(false);
-  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(
+    initialLibraryError,
+  );
 
   useEffect(() => {
     if (!userId) {
+      loadedLibraryUserIdRef.current = null;
       setPapers(EMPTY_PAPERS);
       setConnections(EMPTY_CONNECTIONS);
       setSelectedId(null);
       setLibraryError(null);
+      return;
+    }
+
+    if (loadedLibraryUserIdRef.current === userId) {
       return;
     }
 
@@ -94,6 +114,7 @@ export function Workspace() {
         setConnections(
           Array.isArray(nextData.connections) ? nextData.connections : [],
         );
+        loadedLibraryUserIdRef.current = userId;
       } catch (loadError) {
         if (controller.signal.aborted) return;
 
