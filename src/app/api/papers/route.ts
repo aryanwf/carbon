@@ -1,8 +1,9 @@
 import {
-  getRequestUserId,
+  envErrorResponse,
+  getSupabaseAdmin,
   mapPaperConnectionRow,
   mergePaperRows,
-  supabaseAdmin,
+  requireRequestUser,
   type PaperRow,
   type UserPaperRow,
 } from "@/lib/supabase";
@@ -10,10 +11,19 @@ import {
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const userId = await getRequestUserId(request);
+  const auth = await requireRequestUser(request);
 
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const userId = auth.user.id;
+  let supabaseAdmin;
+
+  try {
+    supabaseAdmin = getSupabaseAdmin();
+  } catch (error) {
+    return envErrorResponse(error);
   }
 
   const { data: userPapers, error: userPapersError } = await supabaseAdmin

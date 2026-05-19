@@ -40,6 +40,20 @@ CREATE TABLE IF NOT EXISTS paper_connections (
   CHECK (paper_a <> paper_b)
 );
 
+CREATE TABLE IF NOT EXISTS banned_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  username_pattern TEXT,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (
+    user_id IS NOT NULL
+    OR email IS NOT NULL
+    OR username_pattern IS NOT NULL
+  )
+);
+
 CREATE INDEX IF NOT EXISTS user_papers_user_added_idx
   ON user_papers (user_id, added_at DESC);
 
@@ -51,3 +65,14 @@ CREATE INDEX IF NOT EXISTS paper_connections_paper_a_idx
 
 CREATE INDEX IF NOT EXISTS paper_connections_paper_b_idx
   ON paper_connections (paper_b);
+
+CREATE INDEX IF NOT EXISTS banned_users_user_idx
+  ON banned_users (user_id);
+
+CREATE INDEX IF NOT EXISTS banned_users_email_idx
+  ON banned_users (LOWER(email));
+
+ALTER TABLE papers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_papers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE banned_users ENABLE ROW LEVEL SECURITY;

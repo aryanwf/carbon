@@ -1,4 +1,8 @@
-import { getRequestUserId, supabaseAdmin } from "@/lib/supabase";
+import {
+  envErrorResponse,
+  getSupabaseAdmin,
+  requireRequestUser,
+} from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -6,10 +10,19 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const userId = await getRequestUserId(request);
+  const auth = await requireRequestUser(request);
 
-  if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const userId = auth.user.id;
+  let supabaseAdmin;
+
+  try {
+    supabaseAdmin = getSupabaseAdmin();
+  } catch (error) {
+    return envErrorResponse(error);
   }
 
   const { id } = await params;
