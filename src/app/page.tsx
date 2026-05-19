@@ -17,7 +17,10 @@ export default async function Home() {
     supabase.auth.getSession(),
     supabase.auth.getUser(),
   ]);
-  const session = userData.user ? sessionData.session : null;
+  const session =
+    userData.user && sessionData.session
+      ? { ...sessionData.session, user: userData.user }
+      : null;
 
   let initialPapers = EMPTY_PAPERS;
   let initialConnections = EMPTY_CONNECTIONS;
