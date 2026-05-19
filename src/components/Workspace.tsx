@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { PaperDetail } from "@/components/PaperDetail";
 import { PaperGraph } from "@/components/PaperGraph";
@@ -31,6 +31,10 @@ type PapersResponse = {
 
 export function Workspace() {
   const { session, user, loading, error, signInWithGoogle, signOut } = useAuth();
+  const accessTokenRef = useRef<string | null>(null);
+  const userId = session?.user.id ?? null;
+  accessTokenRef.current = session?.access_token ?? null;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<WorkspaceView>("graph");
   const [filter, setFilter] = useState<LibraryFilter>("all");
@@ -49,7 +53,7 @@ export function Workspace() {
   const [libraryError, setLibraryError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session) {
+    if (!userId) {
       setPapers(EMPTY_PAPERS);
       setConnections(EMPTY_CONNECTIONS);
       setSelectedId(null);
@@ -64,9 +68,15 @@ export function Workspace() {
       setLibraryError(null);
 
       try {
+        const accessToken = accessTokenRef.current;
+
+        if (!accessToken) {
+          throw new Error("Missing access token");
+        }
+
         const response = await fetch("/api/papers", {
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           signal: controller.signal,
         });
@@ -102,7 +112,7 @@ export function Workspace() {
     loadPapers();
 
     return () => controller.abort();
-  }, [session]);
+  }, [userId]);
 
   const selectedPaper = papers.find((p) => p.id === selectedId) ?? null;
 
