@@ -61,8 +61,12 @@ export type ProfileWithStats = Profile & {
   followers_count: number;
   following_count: number;
   papers_count: number;
+  papers_read_count: number;
+  public_items_count: number;
   stars_count: number;
+  stars_received_count: number;
   claims_count: number;
+  published_works_count: number;
   is_following?: boolean;
 };
 

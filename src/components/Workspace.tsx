@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { CommunityFeed } from "@/components/CommunityFeed";
@@ -67,6 +68,8 @@ type WorkspaceProps = {
   initialConnections: PaperConnection[];
   initialLibraryError: string | null;
   initialLibraryUserId: string | null;
+  initialProfileUsername: string | null;
+  initialProfileAvatarUrl: string | null;
 };
 
 export function Workspace({
@@ -74,6 +77,8 @@ export function Workspace({
   initialConnections,
   initialLibraryError,
   initialLibraryUserId,
+  initialProfileUsername,
+  initialProfileAvatarUrl,
 }: WorkspaceProps) {
   const { session, user, loading, error, signInWithGoogle, signOut } = useAuth();
   const accessTokenRef = useRef<string | null>(null);
@@ -275,7 +280,8 @@ export function Workspace({
     <div className="flex h-screen w-full flex-col gap-3 overflow-hidden bg-background p-3 font-sans text-foreground">
       <TopBar
         view={view}
-        userLabel={user?.email ?? "Signed in"}
+        profileUsername={initialProfileUsername}
+        profileAvatarUrl={initialProfileAvatarUrl}
         onViewChange={setView}
         detailCollapsed={detailCollapsed}
         onAddPaper={() => setImportOpen(true)}
@@ -441,7 +447,8 @@ function parseSseEvent(
 
 type TopBarProps = {
   view: WorkspaceView;
-  userLabel: string;
+  profileUsername: string | null;
+  profileAvatarUrl: string | null;
   onViewChange: (v: WorkspaceView) => void;
   detailCollapsed: boolean;
   onAddPaper: () => void;
@@ -451,7 +458,8 @@ type TopBarProps = {
 
 function TopBar({
   view,
-  userLabel,
+  profileUsername,
+  profileAvatarUrl,
   onViewChange,
   detailCollapsed,
   onAddPaper,
@@ -504,9 +512,23 @@ function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="hidden max-w-48 truncate font-mono text-[10px] text-muted lg:block">
-          {userLabel}
-        </span>
+        {profileUsername ? (
+          <Link
+            href={`/u/${encodeURIComponent(profileUsername)}`}
+            className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2 text-muted transition-all duration-300 ease-spring hover:border-white/20 hover:text-foreground active:scale-[0.98]"
+            aria-label="View profile"
+            title="View profile"
+          >
+            {profileAvatarUrl ? (
+              <span
+                className="h-full w-full bg-cover bg-center"
+                style={{ backgroundImage: `url(${profileAvatarUrl})` }}
+              />
+            ) : (
+              <ProfileIcon />
+            )}
+          </Link>
+        ) : null}
         <button
           type="button"
           onClick={onToggleDetail}
@@ -523,6 +545,24 @@ function TopBar({
         </button>
       </div>
     </header>
+  );
+}
+
+function ProfileIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M20 21a8 8 0 0 0-16 0" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
   );
 }
 

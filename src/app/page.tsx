@@ -27,6 +27,8 @@ export default async function Home() {
   let initialPapers = EMPTY_PAPERS;
   let initialConnections = EMPTY_CONNECTIONS;
   let initialLibraryError: string | null = null;
+  let initialProfileUsername: string | null = null;
+  let initialProfileAvatarUrl: string | null = null;
 
   if (userData.user) {
     const user = toAuthenticatedRequestUser(userData.user);
@@ -39,7 +41,9 @@ export default async function Home() {
           ? `Account banned: ${bannedReason}`
           : "Account banned";
       } else {
-        await ensureUserProfile(user);
+        const profile = await ensureUserProfile(user);
+        initialProfileUsername = profile.username;
+        initialProfileAvatarUrl = profile.avatar_url;
         const library = await getUserLibrary(user.id);
         initialPapers = library.papers;
         initialConnections = library.connections;
@@ -57,6 +61,8 @@ export default async function Home() {
         initialConnections={initialConnections}
         initialLibraryError={initialLibraryError}
         initialLibraryUserId={userData.user?.id ?? null}
+        initialProfileUsername={initialProfileUsername}
+        initialProfileAvatarUrl={initialProfileAvatarUrl}
       />
     </AuthProvider>
   );

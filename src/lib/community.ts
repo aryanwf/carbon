@@ -373,27 +373,130 @@ async function addProfileStats(
     followers_count,
     following_count,
     papers_count,
+    papers_read_count,
+    public_items_count,
     stars_count,
-    claims_count,
+    claimedPaperIds,
     is_following,
   ] = await Promise.all([
     countRows(supabase, "follows", "following_id", profile.id),
     countRows(supabase, "follows", "follower_id", profile.id),
     countRows(supabase, "user_papers", "user_id", profile.id),
+    countFilteredRows(supabase, "user_papers", [
+      ["user_id", profile.id],
+      ["is_read", true],
+    ]),
+    countPublicLibraryItems(supabase, profile.id),
     countRows(supabase, "paper_stars", "user_id", profile.id),
-    countRows(supabase, "paper_claims", "user_id", profile.id),
+    selectClaimedPaperIds(supabase, profile.id),
     viewerId ? hasFollow(supabase, viewerId, profile.id) : Promise.resolve(false),
   ]);
+  const stars_received_count = await countStarsForPapers(supabase, claimedPaperIds);
+  const published_works_count = claimedPaperIds.length;
 
   return {
     ...profile,
     followers_count,
     following_count,
     papers_count,
+    papers_read_count,
+    public_items_count,
     stars_count,
-    claims_count,
+    stars_received_count,
+    claims_count: published_works_count,
+    published_works_count,
     is_following,
   };
+}
+
+async function countFilteredRows(
+  supabase: SupabaseClient,
+  table: string,
+  filters: [string, string | boolean][],
+) {
+  let query = supabase.from(table).select("*", { count: "exact", head: true });
+
+  for (const [column, value] of filters) {
+    query = query.eq(column, value);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return count ?? 0;
+}
+
+async function countPublicLibraryItems(
+  supabase: SupabaseClient,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("user_papers")
+    .select("paper_id")
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const paperIds = ((data ?? []) as { paper_id: string }[]).map(
+    (row) => row.paper_id,
+  );
+
+  if (paperIds.length === 0) {
+    return 0;
+  }
+
+  const { count, error: countError } = await supabase
+    .from("papers")
+    .select("*", { count: "exact", head: true })
+    .in("id", paperIds)
+    .eq("is_public", true);
+
+  if (countError) {
+    throw new Error(countError.message);
+  }
+
+  return count ?? 0;
+}
+
+async function selectClaimedPaperIds(
+  supabase: SupabaseClient,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("paper_claims")
+    .select("paper_id")
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ((data ?? []) as { paper_id: string }[]).map((row) => row.paper_id);
+}
+
+async function countStarsForPapers(
+  supabase: SupabaseClient,
+  paperIds: string[],
+) {
+  if (paperIds.length === 0) {
+    return 0;
+  }
+
+  const { count, error } = await supabase
+    .from("paper_stars")
+    .select("*", { count: "exact", head: true })
+    .in("paper_id", paperIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return count ?? 0;
 }
 
 async function countRows(

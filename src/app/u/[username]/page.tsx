@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FollowButton } from "@/components/FollowButton";
+import { ProfileActions } from "@/components/ProfileActions";
 import {
   ensureUserProfile,
   getCommunityFeed,
@@ -41,57 +42,86 @@ export default async function ProfilePage({
     limit: 30,
   });
   const isOwnProfile = viewer?.id === profile.id;
+  const profilePath = `/u/${encodeURIComponent(profile.username)}`;
 
   return (
     <main className="min-h-screen bg-background px-6 py-8 text-foreground">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <Link href="/" className="font-mono text-xs text-muted hover:text-foreground">
           Carbon / community
         </Link>
 
-        <section className="rounded-2xl border border-border bg-surface p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex gap-5">
-              <Avatar
-                avatarUrl={profile.avatar_url}
-                label={profile.display_name ?? profile.username}
-              />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="font-display text-5xl leading-none tracking-[-0.05em]">
-                    {profile.display_name ?? profile.username}
-                  </h1>
-                  {profile.is_verified ? (
-                    <span className="rounded-full bg-accent-soft px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-accent-soft-foreground">
-                      Verified
-                    </span>
-                  ) : null}
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="border-b border-border bg-surface-2 px-8 py-7">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex flex-col gap-5 sm:flex-row">
+                <Avatar
+                  avatarUrl={profile.avatar_url}
+                  label={profile.display_name ?? profile.username}
+                />
+                <div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h1 className="font-display text-5xl leading-none tracking-[-0.05em] sm:text-6xl">
+                      {profile.display_name ?? profile.username}
+                    </h1>
+                    {profile.is_verified ? (
+                      <span className="rounded-full bg-accent-soft px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-accent-soft-foreground">
+                        Verified
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 font-mono text-xs text-muted">
+                    @{profile.username}
+                  </p>
+                  <p className="mt-5 max-w-2xl text-sm leading-7 text-muted">
+                    {profile.bio || "No bio yet."}
+                  </p>
                 </div>
-                <p className="mt-2 font-mono text-xs text-muted">
-                  @{profile.username}
-                </p>
-                <p className="mt-5 max-w-xl text-sm leading-7 text-muted">
-                  {profile.bio || "No bio yet."}
-                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-3 sm:flex-row lg:items-end">
+                <ProfileActions profilePath={profilePath} canEdit={isOwnProfile} />
+                {!isOwnProfile ? (
+                  <FollowButton
+                    username={profile.username}
+                    initialFollowing={Boolean(profile.is_following)}
+                    initialFollowers={profile.followers_count}
+                    accessToken={sessionData.session?.access_token ?? null}
+                  />
+                ) : null}
               </div>
             </div>
-
-            {!isOwnProfile ? (
-              <FollowButton
-                username={profile.username}
-                initialFollowing={Boolean(profile.is_following)}
-                initialFollowers={profile.followers_count}
-                accessToken={sessionData.session?.access_token ?? null}
-              />
-            ) : null}
           </div>
 
-          <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <Stat label="Followers" value={profile.followers_count} />
-            <Stat label="Following" value={profile.following_count} />
-            <Stat label="Papers" value={profile.papers_count} />
-            <Stat label="Stars" value={profile.stars_count} />
-            <Stat label="Claims" value={profile.claims_count} />
+          <dl className="grid gap-px bg-border sm:grid-cols-3">
+            <HeaderDetail label="Followers" value={profile.followers_count} />
+            <HeaderDetail label="Following" value={profile.following_count} />
+            <HeaderDetail
+              label="Joined"
+              value={formatJoinedDate(profile.created_at)}
+            />
+          </dl>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-surface p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+                Statistics
+              </p>
+              <h2 className="mt-2 font-display text-4xl leading-none tracking-[-0.04em]">
+                Overview
+              </h2>
+            </div>
+          </div>
+
+          <dl className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
+            <Stat label="Papers in library" value={profile.papers_count} />
+            <Stat label="Papers read" value={profile.papers_read_count} />
+            <Stat label="Public items" value={profile.public_items_count} />
+            <Stat label="Stars given" value={profile.stars_count} />
+            <Stat label="Stars received" value={profile.stars_received_count} />
+            <Stat label="Published works" value={profile.published_works_count} />
           </dl>
         </section>
 
@@ -103,6 +133,23 @@ export default async function ProfilePage({
         </section>
       </div>
     </main>
+  );
+}
+
+function HeaderDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="bg-surface px-8 py-5">
+      <dt className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm font-medium text-foreground">{value}</dd>
+    </div>
   );
 }
 
@@ -144,6 +191,13 @@ function Stat({ label, value }: { label: string; value: number }) {
       </dd>
     </div>
   );
+}
+
+function formatJoinedDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function ActivityList({ activities }: { activities: CommunityActivity[] }) {
