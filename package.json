@@ -11,11 +11,15 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
     "cheerio": "^1.2.0",
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "graphology-layout-noverlap": "^0.4.2",
     "katex": "^0.16.47",
     "next": "16.2.6",
     "pdf-parse": "^2.4.5",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sigma": "^3.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
