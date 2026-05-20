@@ -1,10 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { PaperDetail } from "@/components/PaperDetail";
-import { PaperGraph } from "@/components/PaperGraph";
 import { PaperList } from "@/components/PaperList";
 import { PaperReader } from "@/components/PaperReader";
 import { ResizeHandle } from "@/components/ResizeHandle";
@@ -29,6 +29,23 @@ type ImportPaperResponse = {
   paper: Paper;
 };
 
+type PaperGraphProps = {
+  papers: Paper[];
+  connections: PaperConnection[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+};
+
+const PaperGraph = dynamic<PaperGraphProps>(
+  () => import("@/components/PaperGraph").then((module) => module.PaperGraph),
+  {
+    ssr: false,
+    loading: () => (
+      <AuthStatus title="Loading graph" message="Preparing WebGL renderer." />
+    ),
+  },
+);
+
 type WorkspaceProps = {
   initialPapers: Paper[];
   initialConnections: PaperConnection[];
@@ -49,7 +66,7 @@ export function Workspace({
   accessTokenRef.current = session?.access_token ?? null;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<WorkspaceView>("graph");
+  const [view, setView] = useState<WorkspaceView>("reader");
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<DetailTab>("overview");
 
@@ -331,7 +348,7 @@ function TopBar({
       </div>
 
       <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-2 p-1">
-        {(["graph", "reader"] as WorkspaceView[]).map((v) => (
+        {(["reader", "graph"] as WorkspaceView[]).map((v) => (
           <button
             key={v}
             type="button"
