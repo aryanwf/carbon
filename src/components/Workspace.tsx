@@ -26,7 +26,9 @@ type PapersResponse = {
 };
 
 type ImportPaperResponse = {
-  paper: Paper;
+  paper: Paper | null;
+  papers: Paper[];
+  errors?: { url: string; error: string }[];
 };
 
 type PaperGraphProps = {
@@ -192,13 +194,34 @@ export function Workspace({
         throw new Error(payload.error ?? "Failed to import paper");
       }
 
-      const { paper } = payload as ImportPaperResponse;
-      setPapers((currentPapers) => [
-        paper,
-        ...currentPapers.filter((currentPaper) => currentPaper.id !== paper.id),
-      ]);
-      setSelectedId(paper.id);
+      const { papers, paper, errors } = payload as ImportPaperResponse;
+      const imported =
+        papers.length > 0 ? papers : paper ? [paper] : [];
+
+      if (imported.length === 0) {
+        throw new Error("Failed to import paper");
+      }
+
+      setPapers((currentPapers) => {
+        const importedIds = new Set(imported.map((entry) => entry.id));
+        return [
+          ...imported,
+          ...currentPapers.filter((entry) => !importedIds.has(entry.id)),
+        ];
+      });
+      setSelectedId(imported[0].id);
       loadedLibraryUserIdRef.current = userId;
+
+      if (errors && errors.length > 0) {
+        const failed = errors
+          .map((entry) => `${entry.url}: ${entry.error}`)
+          .join("; ");
+        setImportError(
+          `Imported ${imported.length} paper${imported.length === 1 ? "" : "s"}. Failed: ${failed}`,
+        );
+        return false;
+      }
+
       return true;
     } catch (error) {
       const message =

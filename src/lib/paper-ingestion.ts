@@ -33,6 +33,54 @@ type MetadataGuess = {
   categories?: string[];
 };
 
+export function parseImportUrls(rawInput: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of rawInput.split(/\r?\n/)) {
+    const url = line.trim();
+    if (!url || seen.has(url)) {
+      continue;
+    }
+
+    seen.add(url);
+    urls.push(url);
+  }
+
+  return urls;
+}
+
+export async function importPaperUrls(userId: string, rawInput: string) {
+  const urls = parseImportUrls(rawInput);
+
+  if (urls.length === 0) {
+    throw new Error("Valid URL is required");
+  }
+
+  const papers: Paper[] = [];
+  const errors: { url: string; error: string }[] = [];
+
+  for (const url of urls) {
+    try {
+      papers.push(await importPaperUrl(userId, url));
+    } catch (error) {
+      errors.push({
+        url,
+        error:
+          error instanceof Error ? error.message : "Failed to import paper",
+      });
+    }
+  }
+
+  if (papers.length === 0) {
+    throw new Error(
+      errors.map((entry) => `${entry.url}: ${entry.error}`).join("; "),
+    );
+  }
+
+  return { papers, errors };
+}
+
 export async function importPaperUrl(userId: string, rawUrl: string) {
   const inputUrl = parseHttpUrl(rawUrl);
   const extracted = await extractPaper(inputUrl);

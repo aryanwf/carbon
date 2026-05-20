@@ -71,7 +71,8 @@ export function PaperList({
                   Add paper
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  Paste an arXiv URL, direct PDF link, or paper webpage.
+                  Paste one or more arXiv URLs, direct PDF links, or paper
+                  webpages — one per line.
                 </p>
               </div>
               <button
@@ -85,15 +86,15 @@ export function PaperList({
             </div>
 
             <div className="mt-6 space-y-3">
-              <input
-                type="url"
+              <textarea
                 value={importUrl}
                 onChange={(event) => setImportUrl(event.target.value)}
-                placeholder="https://arxiv.org/abs/..."
+                placeholder={"https://arxiv.org/abs/...\nhttps://example.org/paper.pdf"}
                 disabled={importingPaper}
                 required
+                rows={4}
                 autoFocus
-                className="w-full rounded-md border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition-all duration-300 ease-spring placeholder:text-muted/60 focus:border-white/20 focus:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full resize-y rounded-md border border-border bg-background px-4 py-2.5 font-mono text-sm text-foreground outline-none transition-all duration-300 ease-spring placeholder:text-muted/60 focus:border-white/20 focus:bg-background disabled:cursor-not-allowed disabled:opacity-60"
               />
               {importError && (
                 <p className="text-xs leading-5 text-[#e3bb74]">{importError}</p>
@@ -114,7 +115,7 @@ export function PaperList({
                 disabled={importingPaper}
                 className="rounded-md bg-accent px-4 py-2 text-xs font-medium text-background transition-all duration-300 ease-spring hover:bg-[#ddd7cb] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {importingPaper ? "Importing..." : "Import Paper"}
+                {importingPaper ? "Importing..." : "Import"}
               </button>
             </div>
           </form>

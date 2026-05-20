@@ -2,7 +2,7 @@ import {
   envErrorResponse,
   requireRequestUser,
 } from "@/lib/supabase";
-import { importPaperUrl } from "@/lib/paper-ingestion";
+import { importPaperUrls, parseImportUrls } from "@/lib/paper-ingestion";
 import { getUserLibrary } from "@/lib/papers";
 
 export const runtime = "nodejs";
@@ -37,11 +37,32 @@ export async function POST(request: Request) {
   }
 
   try {
-    const payload = (await request.json()) as { url?: unknown };
-    const url = typeof payload.url === "string" ? payload.url : "";
-    const paper = await importPaperUrl(auth.user.id, url);
+    const payload = (await request.json()) as {
+      url?: unknown;
+      urls?: unknown;
+    };
+    const rawInput = Array.isArray(payload.urls)
+      ? payload.urls.filter((value): value is string => typeof value === "string").join("\n")
+      : typeof payload.url === "string"
+        ? payload.url
+        : "";
+    const urls = parseImportUrls(rawInput);
 
-    return Response.json({ paper }, { status: 201 });
+    if (urls.length === 0) {
+      return Response.json({ error: "Valid URL is required" }, { status: 400 });
+    }
+
+    const { papers, errors } = await importPaperUrls(auth.user.id, rawInput);
+    const paper = papers[0] ?? null;
+
+    return Response.json(
+      {
+        paper,
+        papers,
+        ...(errors.length > 0 ? { errors } : {}),
+      },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof SyntaxError) {
       return Response.json({ error: "Invalid JSON body" }, { status: 400 });
