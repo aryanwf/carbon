@@ -48,6 +48,24 @@ CREATE TABLE IF NOT EXISTS paper_connections (
   CHECK (paper_a <> paper_b)
 );
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Existing DBs: chat_messages may predate per-user scoping.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+DELETE FROM chat_messages WHERE user_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS chat_messages_user_paper_idx
+  ON chat_messages (user_id, paper_id, created_at);
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+
 CREATE TABLE IF NOT EXISTS banned_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
