@@ -31,6 +31,19 @@ type ImportPaperResponse = {
   errors?: { url: string; error: string }[];
 };
 
+type ImportProgressState = {
+  total: number;
+  completed: number;
+  failed: number;
+  inFlight: string[];
+};
+
+type ImportProgressEvent =
+  | { type: "start"; total: number; urls: string[] }
+  | { type: "paper_start"; index: number; url: string }
+  | { type: "paper_done"; index: number; url: string; paper: Paper }
+  | { type: "paper_error"; index: number; url: string; error: string };
+
 type PaperGraphProps = {
   papers: Paper[];
   connections: PaperConnection[];
@@ -86,6 +99,8 @@ export function Workspace({
   );
   const [importingPaper, setImportingPaper] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -175,6 +190,7 @@ export function Workspace({
 
     setImportingPaper(true);
     setImportError(null);
+    setImportProgress(null);
 
     try {
       const response = await fetch("/api/papers", {
@@ -182,21 +198,26 @@ export function Workspace({
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
+          Accept: "text/event-stream",
         },
         body: JSON.stringify({ url }),
       });
-      const contentType = response.headers.get("content-type") ?? "";
-      const payload = contentType.includes("application/json")
-        ? await response.json()
-        : { error: await response.text() };
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Failed to import paper");
+      if (!response.ok || !response.body) {
+        const detail = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(detail) as { error?: string };
+          throw new Error(parsed.error ?? "Failed to import paper");
+        } catch {
+          throw new Error(detail || "Failed to import paper");
+        }
       }
 
-      const { papers, paper, errors } = payload as ImportPaperResponse;
-      const imported =
-        papers.length > 0 ? papers : paper ? [paper] : [];
+      const result = await consumeImportStream(response.body, (event) => {
+        setImportProgress((prev) => reduceImportProgress(prev, event));
+      });
+
+      const imported = result.papers.length > 0 ? result.papers : result.paper ? [result.paper] : [];
 
       if (imported.length === 0) {
         throw new Error("Failed to import paper");
@@ -212,8 +233,8 @@ export function Workspace({
       setSelectedId(imported[0].id);
       loadedLibraryUserIdRef.current = userId;
 
-      if (errors && errors.length > 0) {
-        const failed = errors
+      if (result.errors && result.errors.length > 0) {
+        const failed = result.errors
           .map((entry) => `${entry.url}: ${entry.error}`)
           .join("; ");
         setImportError(
@@ -230,6 +251,7 @@ export function Workspace({
       return false;
     } finally {
       setImportingPaper(false);
+      setImportProgress(null);
     }
   };
 
@@ -276,6 +298,7 @@ export function Workspace({
             onAddPaper={importPaper}
             importingPaper={importingPaper}
             importError={importError}
+            importProgress={importProgress}
             importOpen={importOpen}
             onImportOpenChange={setImportOpen}
           />
@@ -321,6 +344,96 @@ export function Workspace({
       </div>
     </div>
   );
+}
+
+function reduceImportProgress(
+  prev: ImportProgressState | null,
+  event: ImportProgressEvent,
+): ImportProgressState | null {
+  switch (event.type) {
+    case "start":
+      return {
+        total: event.total,
+        completed: 0,
+        failed: 0,
+        inFlight: [],
+      };
+    case "paper_start":
+      if (!prev) return prev;
+      return { ...prev, inFlight: [...prev.inFlight, event.url] };
+    case "paper_done":
+      if (!prev) return prev;
+      return {
+        ...prev,
+        completed: prev.completed + 1,
+        inFlight: prev.inFlight.filter((url) => url !== event.url),
+      };
+    case "paper_error":
+      if (!prev) return prev;
+      return {
+        ...prev,
+        failed: prev.failed + 1,
+        inFlight: prev.inFlight.filter((url) => url !== event.url),
+      };
+  }
+}
+
+async function consumeImportStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: ImportProgressEvent) => void,
+): Promise<ImportPaperResponse> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let final: ImportPaperResponse | null = null;
+  let streamError: string | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary: number;
+    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const parsed = parseSseEvent(rawEvent);
+      if (!parsed) continue;
+
+      if (parsed.event === "progress") {
+        onEvent(parsed.data as ImportProgressEvent);
+      } else if (parsed.event === "done") {
+        final = parsed.data as ImportPaperResponse;
+      } else if (parsed.event === "error") {
+        streamError =
+          (parsed.data as { message?: string })?.message ?? "Import failed";
+      }
+    }
+  }
+
+  if (streamError) throw new Error(streamError);
+  if (!final) throw new Error("Import stream ended unexpectedly");
+  return final;
+}
+
+function parseSseEvent(
+  raw: string,
+): { event: string; data: unknown } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+
+  if (dataLines.length === 0) return null;
+
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) };
+  } catch {
+    return null;
+  }
 }
 
 type TopBarProps = {

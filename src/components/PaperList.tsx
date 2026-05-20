@@ -3,6 +3,13 @@
 import { useState, type FormEvent } from "react";
 import type { Paper } from "@/lib/types";
 
+type ImportProgress = {
+  total: number;
+  completed: number;
+  failed: number;
+  inFlight: string[];
+};
+
 type Props = {
   papers: Paper[];
   selectedId: string | null;
@@ -12,6 +19,7 @@ type Props = {
   onAddPaper: (url: string) => Promise<boolean>;
   importingPaper: boolean;
   importError: string | null;
+  importProgress: ImportProgress | null;
   importOpen: boolean;
   onImportOpenChange: (open: boolean) => void;
 };
@@ -25,6 +33,7 @@ export function PaperList({
   onAddPaper,
   importingPaper,
   importError,
+  importProgress,
   importOpen,
   onImportOpenChange,
 }: Props) {
@@ -96,6 +105,9 @@ export function PaperList({
                 autoFocus
                 className="w-full resize-y rounded-md border border-border bg-background px-4 py-2.5 font-mono text-sm text-foreground outline-none transition-all duration-300 ease-spring placeholder:text-muted/60 focus:border-white/20 focus:bg-background disabled:cursor-not-allowed disabled:opacity-60"
               />
+              {importProgress && importProgress.total > 0 && (
+                <ImportProgressBar progress={importProgress} />
+              )}
               {importError && (
                 <p className="text-xs leading-5 text-[#e3bb74]">{importError}</p>
               )}
@@ -165,6 +177,43 @@ export function PaperList({
           ))
         )}
       </ul>
+    </div>
+  );
+}
+
+function ImportProgressBar({ progress }: { progress: ImportProgress }) {
+  const finished = progress.completed + progress.failed;
+  const pct = progress.total === 0 ? 0 : Math.round((finished / progress.total) * 100);
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-surface-2 px-3 py-2.5">
+      <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.14em] text-muted">
+        <span>
+          {finished}/{progress.total}
+          {progress.failed > 0 ? ` · ${progress.failed} failed` : ""}
+        </span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1 w-full overflow-hidden rounded-full bg-background">
+        <div
+          className="h-full bg-accent transition-[width] duration-300 ease-spring"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {progress.inFlight.length > 0 && (
+        <ul className="space-y-1">
+          {progress.inFlight.map((url) => (
+            <li
+              key={url}
+              className="truncate font-mono text-[10px] text-muted/80"
+              title={url}
+            >
+              <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent align-middle" />
+              {url}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

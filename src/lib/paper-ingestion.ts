@@ -51,12 +51,24 @@ export function parseImportUrls(rawInput: string): string[] {
   return urls;
 }
 
-export async function importPaperUrls(userId: string, rawInput: string) {
+export type ImportProgressEvent =
+  | { type: "start"; total: number; urls: string[] }
+  | { type: "paper_start"; index: number; url: string }
+  | { type: "paper_done"; index: number; url: string; paper: Paper }
+  | { type: "paper_error"; index: number; url: string; error: string };
+
+export async function importPaperUrls(
+  userId: string,
+  rawInput: string,
+  onProgress?: (event: ImportProgressEvent) => void,
+) {
   const urls = parseImportUrls(rawInput);
 
   if (urls.length === 0) {
     throw new Error("Valid URL is required");
   }
+
+  onProgress?.({ type: "start", total: urls.length, urls });
 
   const results: ({ ok: true; paper: Paper } | { ok: false; error: string })[] =
     new Array(urls.length);
@@ -66,16 +78,19 @@ export async function importPaperUrls(userId: string, rawInput: string) {
     while (true) {
       const index = cursor++;
       if (index >= urls.length) return;
+      const url = urls[index];
+
+      onProgress?.({ type: "paper_start", index, url });
 
       try {
-        const paper = await importPaperUrl(userId, urls[index]);
+        const paper = await importPaperUrl(userId, url);
         results[index] = { ok: true, paper };
+        onProgress?.({ type: "paper_done", index, url, paper });
       } catch (error) {
-        results[index] = {
-          ok: false,
-          error:
-            error instanceof Error ? error.message : "Failed to import paper",
-        };
+        const message =
+          error instanceof Error ? error.message : "Failed to import paper";
+        results[index] = { ok: false, error: message };
+        onProgress?.({ type: "paper_error", index, url, error: message });
       }
     }
   };
