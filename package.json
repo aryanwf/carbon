@@ -9,8 +9,6 @@
   },
   "dependencies": {
     "@embedpdf/react-pdf-viewer": "^2.14.3",
-    "@streamdown/code": "^1.1.1",
-    "@streamdown/math": "^1.0.2",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
     "cheerio": "^1.2.0",
@@ -22,8 +20,11 @@
     "pdf-parse": "^2.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "sigma": "^3.0.3",
-    "streamdown": "^2.5.0"
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "sigma": "^3.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

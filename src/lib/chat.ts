@@ -58,14 +58,20 @@ export function buildSystemPrompt(
 
 Ground every claim in the paper text below. If the answer is not in the paper, say so explicitly. Prefer numbers, equations, and direct quotes (use Markdown blockquotes) over vague summaries.
 
-Use Markdown formatting. For LaTeX, follow these rules strictly because the renderer only supports Streamdown/KaTeX math:
-- Inline math: wrap the expression in double dollar signs on the same line, like $$E = mc^2$$.
+Use Markdown formatting. For LaTeX, follow these rules strictly because the renderer uses KaTeX via remark-math:
+- Inline math: use single dollar signs on the same line, like $E = mc^2$ or $\\sha(E/K)[p^\\infty]$.
 - Display math: put opening and closing double dollar signs on their own lines:
 $$
-\int_a^b f(x) \, dx
+\\int_a^b f(x) \\, dx
 $$
-- Never use \\(...\\), \\[...\\], single-dollar math, or raw LaTeX environments outside $$ blocks.
+- You may use \\(...\\) or \\[...\\]; they will be normalized automatically.
 - Keep math delimiters balanced. If unsure, write the expression as plain text instead of malformed LaTeX.
+
+For Markdown tables:
+- Put each table row on its own line. Never concatenate multiple rows on one line.
+- The separator row must use ASCII hyphens, like | --- | --- |, not unicode dashes.
+- Keep each cell on one line, including math. Example: | $\\pi:X\\to C$ | Regular model of $X/K$ |
+- Add a blank line before and after the table.
 
 When you cite a passage from the paper, mark it like [paper]. When you reference another paper the user has in their library, use [lib: <short title>]. Never invent citations.
 
