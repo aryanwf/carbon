@@ -1,5 +1,6 @@
 import { AuthProvider } from "@/components/AuthProvider";
 import { Workspace } from "@/components/Workspace";
+import { ensureUserProfile } from "@/lib/community";
 import { getUserLibrary } from "@/lib/papers";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import {
@@ -38,6 +39,7 @@ export default async function Home() {
           ? `Account banned: ${bannedReason}`
           : "Account banned";
       } else {
+        await ensureUserProfile(user);
         const library = await getUserLibrary(user.id);
         initialPapers = library.papers;
         initialConnections = library.connections;

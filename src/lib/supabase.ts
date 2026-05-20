@@ -87,6 +87,8 @@ export type AuthenticatedRequestUser = {
   id: string;
   email: string | null;
   username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
 export function toAuthenticatedRequestUser(user: User): AuthenticatedRequestUser {
@@ -94,6 +96,8 @@ export function toAuthenticatedRequestUser(user: User): AuthenticatedRequestUser
     id: user.id,
     email: user.email ?? null,
     username: getUserName(user),
+    display_name: getDisplayName(user),
+    avatar_url: getAvatarUrl(user),
   };
 }
 
@@ -212,6 +216,24 @@ function getUserName(user: User) {
           : null;
 
   return username;
+}
+
+function getDisplayName(user: User) {
+  const metadata = user.user_metadata;
+  return typeof metadata.name === "string"
+    ? metadata.name
+    : typeof metadata.full_name === "string"
+      ? metadata.full_name
+      : user.email?.split("@")[0] ?? null;
+}
+
+function getAvatarUrl(user: User) {
+  const metadata = user.user_metadata;
+  return typeof metadata.avatar_url === "string"
+    ? metadata.avatar_url
+    : typeof metadata.picture === "string"
+      ? metadata.picture
+      : null;
 }
 
 function wildcardMatches(pattern: string, value: string) {

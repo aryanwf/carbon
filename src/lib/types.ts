@@ -14,6 +14,8 @@ export type Paper = {
   notes: string;
   bs_score: BsScore | null;
   is_public?: boolean;
+  star_count?: number;
+  claimed_by_count?: number;
 };
 
 export type BsScore = {
@@ -55,5 +57,45 @@ export type Profile = {
   updated_at: string;
 };
 
-export type WorkspaceView = "graph" | "reader";
+export type ProfileWithStats = Profile & {
+  followers_count: number;
+  following_count: number;
+  papers_count: number;
+  stars_count: number;
+  claims_count: number;
+  is_following?: boolean;
+};
+
+export type CommunityActivityType =
+  | "paper_added"
+  | "paper_read"
+  | "paper_starred"
+  | "paper_claimed";
+
+export type CommunityPaper = {
+  id: string;
+  title: string;
+  authors: string[];
+  source_url: string | null;
+  pdf_url: string | null;
+};
+
+export type CommunityActivity = {
+  id: string;
+  type: CommunityActivityType;
+  created_at: string;
+  profile: Profile;
+  paper: CommunityPaper;
+};
+
+export type PaperCommunityState = {
+  paper_id: string;
+  star_count: number;
+  claim_count: number;
+  starred: boolean;
+  claimed: boolean;
+  can_claim: boolean;
+};
+
+export type WorkspaceView = "community" | "graph" | "reader";
 export type SortKey = "added" | "published" | "legit" | "interesting";

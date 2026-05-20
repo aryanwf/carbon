@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { MarkdownContent } from "@/components/MarkdownContent";
-import type { ChatMessage, Paper } from "@/lib/types";
+import type { ChatMessage, Paper, PaperCommunityState } from "@/lib/types";
 
 type Tab = "overview" | "chat" | "notes";
 
@@ -63,6 +63,7 @@ export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
               <p className="font-mono text-xs text-muted">
                 {paper.authors.join(", ") || "Unknown authors"}
               </p>
+              <PaperCommunityActions paper={paper} accessToken={accessToken} />
             </div>
 
             <div className="h-px w-full bg-border" />
@@ -93,6 +94,130 @@ export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PaperCommunityActions({
+  paper,
+  accessToken,
+}: {
+  paper: Paper;
+  accessToken: string | null;
+}) {
+  const [state, setState] = useState<PaperCommunityState | null>(null);
+  const [saving, setSaving] = useState<"star" | "claim" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) {
+      setState(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setError(null);
+
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/papers/${encodeURIComponent(paper.id)}/star`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: controller.signal,
+          },
+        );
+        const payload = (await response.json()) as {
+          state?: PaperCommunityState;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.state) {
+          throw new Error(payload.error ?? "Failed to load community state");
+        }
+
+        setState(payload.state);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load community state",
+        );
+      }
+    })();
+
+    return () => controller.abort();
+  }, [paper.id, accessToken]);
+
+  const update = async (kind: "star" | "claim") => {
+    if (!accessToken || !state || saving) return;
+
+    const active = kind === "star" ? state.starred : state.claimed;
+    setSaving(kind);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/papers/${encodeURIComponent(paper.id)}/${kind}`,
+        {
+          method: active ? "DELETE" : "PUT",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      const payload = (await response.json()) as {
+        state?: PaperCommunityState;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.state) {
+        throw new Error(payload.error ?? `Failed to update ${kind}`);
+      }
+
+      setState(payload.state);
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : `Failed to update ${kind}`,
+      );
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void update("star")}
+        disabled={!accessToken || !state || saving !== null}
+        className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all duration-300 ease-spring active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+          state?.starred
+            ? "border-accent bg-accent text-background"
+            : "border-border bg-surface-2 text-muted hover:text-foreground"
+        }`}
+      >
+        {saving === "star" ? "Saving" : state?.starred ? "Starred" : "Star"}{" "}
+        {state?.star_count ?? paper.star_count ?? 0}
+      </button>
+      <button
+        type="button"
+        onClick={() => void update("claim")}
+        disabled={
+          !accessToken || !state || !state.can_claim || saving !== null
+        }
+        className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all duration-300 ease-spring active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+          state?.claimed
+            ? "border-accent bg-accent text-background"
+            : "border-border bg-surface-2 text-muted hover:text-foreground"
+        }`}
+        title={state && !state.can_claim ? "Verified profile required" : undefined}
+      >
+        {saving === "claim" ? "Saving" : state?.claimed ? "Claimed" : "Claim"}{" "}
+        {state?.claim_count ?? paper.claimed_by_count ?? 0}
+      </button>
+      {error ? <p className="basis-full text-xs text-[#e3bb74]">{error}</p> : null}
     </div>
   );
 }

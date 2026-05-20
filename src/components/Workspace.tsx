@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { CommunityFeed } from "@/components/CommunityFeed";
 import { PaperDetail } from "@/components/PaperDetail";
 import { PaperList } from "@/components/PaperList";
 import { PaperReader } from "@/components/PaperReader";
@@ -310,6 +311,8 @@ export function Workspace({
             <AuthStatus title="Loading library" message="Fetching your papers." />
           ) : libraryError ? (
             <AuthStatus title="Library error" message={libraryError} />
+          ) : view === "community" ? (
+            <CommunityFeed accessToken={session?.access_token ?? null} />
           ) : view === "graph" ? (
             <PaperGraph
               papers={papers}
@@ -484,7 +487,7 @@ function TopBar({
       </div>
 
       <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-2 p-1">
-        {(["reader", "graph"] as WorkspaceView[]).map((v) => (
+        {(["reader", "graph", "community"] as WorkspaceView[]).map((v) => (
           <button
             key={v}
             type="button"
