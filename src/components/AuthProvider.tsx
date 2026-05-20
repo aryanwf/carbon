@@ -22,6 +22,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+async function verifiedSession(
+  storedSession: Session | null,
+): Promise<Session | null> {
+  if (!storedSession) {
+    return null;
+  }
+
+  const { data, error } = await supabaseBrowser.auth.getUser();
+
+  if (error || !data.user) {
+    return null;
+  }
+
+  return { ...storedSession, user: data.user };
+}
+
 export function AuthProvider({
   children,
   initialSession,
@@ -36,19 +52,46 @@ export function AuthProvider({
   useEffect(() => {
     let active = true;
 
-    supabaseBrowser.auth.getSession().then(({ data, error: sessionError }) => {
+    const syncAuth = async (storedSession: Session | null) => {
+      const nextSession = await verifiedSession(storedSession);
+
       if (!active) return;
-      setSession(data.session);
+
+      setSession(nextSession);
+      setError(null);
+      setLoading(false);
+    };
+
+    void (async () => {
+      const { data, error: userError } = await supabaseBrowser.auth.getUser();
+
+      if (!active) return;
+
+      if (userError || !data.user) {
+        setSession(null);
+        setError(userError?.message ?? null);
+        setLoading(false);
+        return;
+      }
+
+      const { data: sessionData, error: sessionError } =
+        await supabaseBrowser.auth.getSession();
+
+      if (!active) return;
+
+      setSession(
+        sessionData.session
+          ? { ...sessionData.session, user: data.user }
+          : null,
+      );
       setError(sessionError?.message ?? null);
       setLoading(false);
-    });
+    })();
 
     const {
       data: { subscription },
     } = supabaseBrowser.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setError(null);
-      setLoading(false);
+      void syncAuth(nextSession);
     });
 
     return () => {

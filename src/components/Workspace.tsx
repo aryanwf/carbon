@@ -77,7 +77,7 @@ export function Workspace({
   const { session, user, loading, error, signInWithGoogle, signOut } = useAuth();
   const accessTokenRef = useRef<string | null>(null);
   const loadedLibraryUserIdRef = useRef<string | null>(initialLibraryUserId);
-  const userId = session?.user.id ?? null;
+  const userId = user?.id ?? null;
   accessTokenRef.current = session?.access_token ?? null;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);

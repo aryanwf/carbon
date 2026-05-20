@@ -13,14 +13,15 @@ const EMPTY_CONNECTIONS: PaperConnection[] = [];
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
-  const [{ data: sessionData }, { data: userData }] = await Promise.all([
-    supabase.auth.getSession(),
-    supabase.auth.getUser(),
-  ]);
-  const session =
-    userData.user && sessionData.session
+  const { data: userData } = await supabase.auth.getUser();
+  let session = null;
+
+  if (userData.user) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    session = sessionData.session
       ? { ...sessionData.session, user: userData.user }
       : null;
+  }
 
   let initialPapers = EMPTY_PAPERS;
   let initialConnections = EMPTY_CONNECTIONS;
