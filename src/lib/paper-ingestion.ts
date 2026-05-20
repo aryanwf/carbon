@@ -12,6 +12,7 @@ const PAPERS_BUCKET = "papers";
 const MAX_PDF_BYTES = 30 * 1024 * 1024;
 const MAX_CONTEXT_CHARS = 12_000;
 const OPENROUTER_MODEL = "openai/gpt-oss-120b:free";
+const IMPORT_CONCURRENCY = 4;
 
 type ExtractedPaper = {
   id: string;
@@ -57,20 +58,41 @@ export async function importPaperUrls(userId: string, rawInput: string) {
     throw new Error("Valid URL is required");
   }
 
+  const results: ({ ok: true; paper: Paper } | { ok: false; error: string })[] =
+    new Array(urls.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= urls.length) return;
+
+      try {
+        const paper = await importPaperUrl(userId, urls[index]);
+        results[index] = { ok: true, paper };
+      } catch (error) {
+        results[index] = {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "Failed to import paper",
+        };
+      }
+    }
+  };
+
+  const workerCount = Math.min(IMPORT_CONCURRENCY, urls.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+
   const papers: Paper[] = [];
   const errors: { url: string; error: string }[] = [];
 
-  for (const url of urls) {
-    try {
-      papers.push(await importPaperUrl(userId, url));
-    } catch (error) {
-      errors.push({
-        url,
-        error:
-          error instanceof Error ? error.message : "Failed to import paper",
-      });
+  results.forEach((result, index) => {
+    if (result.ok) {
+      papers.push(result.paper);
+    } else {
+      errors.push({ url: urls[index], error: result.error });
     }
-  }
+  });
 
   if (papers.length === 0) {
     throw new Error(
