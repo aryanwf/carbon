@@ -255,7 +255,10 @@ export function Workspace({
               onSelect={setSelectedId}
             />
           ) : (
-            <PaperReader paper={selectedPaper} />
+            <PaperReader
+              paper={selectedPaper}
+              accessToken={session?.access_token ?? null}
+            />
           )}
         </div>
 
@@ -270,6 +273,7 @@ export function Workspace({
                 paper={selectedPaper}
                 tab={tab}
                 onTabChange={setTab}
+                accessToken={session?.access_token ?? null}
               />
             </div>
           </>
