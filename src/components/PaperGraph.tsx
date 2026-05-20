@@ -16,36 +16,93 @@ type Props = {
   onSelect: (id: string) => void;
 };
 
-const MIN_EDGE_STRENGTH = 0.5;
+type GraphEdge = Pick<
+  PaperConnection,
+  "id" | "paper_a" | "paper_b" | "strength" | "relation_type"
+>;
 
-const CATEGORY_PALETTE = [
-  "#c9a96e",
-  "#8fa4b3",
-  "#b08fa6",
-  "#9eb39a",
-  "#c08977",
-  "#9c9ec4",
-  "#b3a780",
-  "#7fa3a3",
-  "#b89292",
-  "#a4a4a4",
-];
+const MIN_EDGE_STRENGTH = 0.5;
+const SUBJECT_EDGE_STRENGTH = 0.58;
+const SUBJECT_EDGE_SPAN = 2;
+
+const SUBJECT_COLORS: Record<string, string> = {
+  "Computer Science": "#8fa4b3",
+  Mathematics: "#c9a96e",
+  Physics: "#9c9ec4",
+  "Statistics & Data": "#7fa3a3",
+  "Biology & Medicine": "#9eb39a",
+  Engineering: "#c08977",
+  "Chemistry & Materials": "#b08fa6",
+  "Economics & Finance": "#b3a780",
+  "Social Science": "#b89292",
+};
 
 const DEFAULT_NODE_COLOR = "#7d7770";
 const DIMMED_NODE_COLOR = "rgba(164, 156, 145, 0.18)";
 const EDGE_COLOR = "rgba(244, 241, 234, 0.12)";
 const EDGE_HIGHLIGHT = "rgba(244, 241, 234, 0.42)";
 const EDGE_DIMMED = "rgba(244, 241, 234, 0.03)";
-const LABEL_COLOR = "#f4f1ea";
+const LABEL_COLOR = "#171513";
 const LABEL_DIMMED = "rgba(164, 156, 145, 0.35)";
 
-function hashCategory(category: string): string {
-  let hash = 0;
-  for (let i = 0; i < category.length; i++) {
-    hash = (hash * 31 + category.charCodeAt(i)) | 0;
+function subjectColor(subject: string): string {
+  return SUBJECT_COLORS[subject] ?? DEFAULT_NODE_COLOR;
+}
+
+function getPaperSubject(paper: Paper): string {
+  const categoryText = paper.categories.join(" ");
+
+  for (const category of paper.categories) {
+    const codePrefix = category.match(/\b([a-z-]+)\.[a-z]{2}\b/i)?.[1]?.toLowerCase();
+    if (!codePrefix) continue;
+
+    if (codePrefix === "cs") return "Computer Science";
+    if (codePrefix === "math") return "Mathematics";
+    if (codePrefix === "physics" || codePrefix.startsWith("astro-ph")) {
+      return "Physics";
+    }
+    if (codePrefix === "stat") return "Statistics & Data";
+    if (codePrefix === "q-bio") return "Biology & Medicine";
+    if (codePrefix === "eess") return "Engineering";
+    if (codePrefix === "q-fin") return "Economics & Finance";
+    if (codePrefix === "econ") return "Economics & Finance";
   }
-  const index = Math.abs(hash) % CATEGORY_PALETTE.length;
-  return CATEGORY_PALETTE[index];
+
+  const text = `${categoryText} ${paper.title} ${paper.abstract ?? ""}`.toLowerCase();
+
+  if (hasAny(text, ["computer", "software", "algorithm", "machine learning", "neural", "language model", "vision", "robot"])) {
+    return "Computer Science";
+  }
+  if (hasAny(text, ["statistics", "bayesian", "regression", "causal", "data science"])) {
+    return "Statistics & Data";
+  }
+  if (hasAny(text, ["biology", "biomedical", "medicine", "clinical", "genome", "protein", "cell"])) {
+    return "Biology & Medicine";
+  }
+  if (hasAny(text, ["physics", "quantum", "cosmology", "particle", "optical", "relativity"])) {
+    return "Physics";
+  }
+  if (hasAny(text, ["mathematics", "theorem", "algebra", "geometry", "topology"])) {
+    return "Mathematics";
+  }
+  if (hasAny(text, ["engineering", "electronics", "signal processing", "control system", "power system"])) {
+    return "Engineering";
+  }
+  if (hasAny(text, ["chemistry", "chemical", "material", "polymer", "catalyst"])) {
+    return "Chemistry & Materials";
+  }
+  if (hasAny(text, ["economics", "finance", "market", "pricing", "auction"])) {
+    return "Economics & Finance";
+  }
+  if (hasAny(text, ["psychology", "sociology", "education", "policy", "social"])) {
+    return "Social Science";
+  }
+
+  return "Other";
+}
+
+function hasAny(text: string, needles: string[]): boolean {
+  return needles.some((needle) => text.includes(needle));
 }
 
 export function PaperGraph({
@@ -60,6 +117,14 @@ export function PaperGraph({
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
+  const subjectByPaperId = useMemo(() => {
+    const subjects = new Map<string, string>();
+    for (const paper of papers) {
+      subjects.set(paper.id, getPaperSubject(paper));
+    }
+    return subjects;
+  }, [papers]);
+
   const validEdges = useMemo(() => {
     const ids = new Set(papers.map((p) => p.id));
     return connections.filter(
@@ -71,6 +136,43 @@ export function PaperGraph({
     );
   }, [papers, connections]);
 
+  const graphEdges = useMemo<GraphEdge[]>(() => {
+    const edges: GraphEdge[] = [...validEdges];
+    const edgeKeys = new Set(
+      validEdges.map((edge) => edgeKey(edge.paper_a, edge.paper_b)),
+    );
+    const papersBySubject = new Map<string, Paper[]>();
+
+    for (const paper of papers) {
+      const subject = subjectByPaperId.get(paper.id) ?? "Other";
+      papersBySubject.set(subject, [...(papersBySubject.get(subject) ?? []), paper]);
+    }
+
+    for (const [subject, subjectPapers] of papersBySubject) {
+      for (let index = 0; index < subjectPapers.length; index++) {
+        for (let offset = 1; offset <= SUBJECT_EDGE_SPAN; offset++) {
+          const source = subjectPapers[index];
+          const target = subjectPapers[index + offset];
+          if (!source || !target) continue;
+
+          const key = edgeKey(source.id, target.id);
+          if (edgeKeys.has(key)) continue;
+
+          edgeKeys.add(key);
+          edges.push({
+            id: `subject:${subject}:${source.id}:${target.id}`,
+            paper_a: source.id,
+            paper_b: target.id,
+            strength: SUBJECT_EDGE_STRENGTH,
+            relation_type: "subject",
+          });
+        }
+      }
+    }
+
+    return edges;
+  }, [papers, subjectByPaperId, validEdges]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -79,39 +181,55 @@ export function PaperGraph({
     const graph = new Graph({ multi: false, type: "undirected" });
 
     const degree = new Map<string, number>();
-    for (const edge of validEdges) {
+    for (const edge of graphEdges) {
       degree.set(edge.paper_a, (degree.get(edge.paper_a) ?? 0) + 1);
       degree.set(edge.paper_b, (degree.get(edge.paper_b) ?? 0) + 1);
     }
     const maxDegree = Math.max(1, ...degree.values());
+    const subjectOrder = Array.from(new Set(subjectByPaperId.values()));
+    const subjectIndex = new Map(
+      subjectOrder.map((subject, index) => [subject, index]),
+    );
 
     const angleStep = (2 * Math.PI) / Math.max(papers.length, 1);
     papers.forEach((paper, index) => {
       const d = degree.get(paper.id) ?? 0;
       const size = 4 + (d / maxDegree) * 14;
-      const primaryCategory = paper.categories?.[0] ?? "Other";
-      const color = paper.categories?.length
-        ? hashCategory(primaryCategory)
-        : DEFAULT_NODE_COLOR;
+      const subject = subjectByPaperId.get(paper.id) ?? "Other";
+      const color = subjectColor(subject);
+      const subjectAngle =
+        ((subjectIndex.get(subject) ?? 0) / Math.max(subjectOrder.length, 1)) *
+        2 *
+        Math.PI;
+      const subjectRadius = 28 + Math.sqrt(papers.length) * 9;
+      const localRadius = 4 + Math.sqrt(papers.length) * 2;
 
-      const radius = 10 + Math.sqrt(papers.length) * 6;
       graph.addNode(paper.id, {
-        label: paper.title,
+        label: "",
+        fullLabel: paper.title,
         size,
         color,
-        x: Math.cos(index * angleStep) * radius,
-        y: Math.sin(index * angleStep) * radius,
+        x:
+          Math.cos(subjectAngle) * subjectRadius +
+          Math.cos(index * angleStep) * localRadius,
+        y:
+          Math.sin(subjectAngle) * subjectRadius +
+          Math.sin(index * angleStep) * localRadius,
         baseColor: color,
-        category: primaryCategory,
+        category: subject,
       });
     });
 
-    for (const edge of validEdges) {
+    for (const edge of graphEdges) {
       graph.addEdge(edge.paper_a, edge.paper_b, {
-        size: 0.5 + (edge.strength - MIN_EDGE_STRENGTH) * 2,
+        size:
+          edge.relation_type === "subject"
+            ? 0.35
+            : 0.5 + (edge.strength - MIN_EDGE_STRENGTH) * 2,
         color: EDGE_COLOR,
         baseColor: EDGE_COLOR,
         strength: edge.strength,
+        relationType: edge.relation_type,
       });
     }
 
@@ -157,12 +275,13 @@ export function PaperGraph({
         const isActive = activeId === null || id === activeId;
         const isNeighbor = neighbors?.has(id) ?? false;
         if (activeId === null) {
-          return { ...attrs, color: attrs.baseColor };
+          return { ...attrs, color: attrs.baseColor, label: "" };
         }
         if (isActive || isNeighbor) {
           return {
             ...attrs,
             color: attrs.baseColor,
+            label: isActive ? String(attrs.fullLabel ?? "") : "",
             zIndex: 2,
             highlighted: isActive,
           };
@@ -212,7 +331,7 @@ export function PaperGraph({
       sigma.kill();
       sigmaRef.current = null;
     };
-  }, [papers, validEdges]);
+  }, [papers, subjectByPaperId, graphEdges]);
 
   useEffect(() => {
     const sigma = sigmaRef.current;
@@ -223,10 +342,16 @@ export function PaperGraph({
       const neighbors = new Set(graph.neighbors(selectedId));
       sigma.setSetting("nodeReducer", (id, attrs) => {
         if (id === selectedId) {
-          return { ...attrs, color: attrs.baseColor, highlighted: true, zIndex: 2 };
+          return {
+            ...attrs,
+            color: attrs.baseColor,
+            highlighted: true,
+            label: "",
+            zIndex: 2,
+          };
         }
         if (neighbors.has(id)) {
-          return { ...attrs, color: attrs.baseColor, zIndex: 1 };
+          return { ...attrs, color: attrs.baseColor, label: "", zIndex: 1 };
         }
         return { ...attrs, color: DIMMED_NODE_COLOR, label: "", zIndex: 0 };
       });
@@ -242,6 +367,7 @@ export function PaperGraph({
       sigma.setSetting("nodeReducer", (_id, attrs) => ({
         ...attrs,
         color: attrs.baseColor,
+        label: "",
       }));
       sigma.setSetting("edgeReducer", (_id, attrs) => ({
         ...attrs,
@@ -252,17 +378,16 @@ export function PaperGraph({
     sigma.refresh();
   }, [selectedId]);
 
-  const categories = useMemo(() => {
+  const subjects = useMemo(() => {
     const seen = new Map<string, string>();
     for (const paper of papers) {
-      const cat = paper.categories?.[0];
-      if (cat && !seen.has(cat)) {
-        seen.set(cat, hashCategory(cat));
+      const subject = subjectByPaperId.get(paper.id) ?? "Other";
+      if (!seen.has(subject)) {
+        seen.set(subject, subjectColor(subject));
       }
-      if (seen.size >= 8) break;
     }
     return Array.from(seen.entries());
-  }, [papers]);
+  }, [papers, subjectByPaperId]);
 
   if (papers.length === 0) {
     return <GraphEmpty />;
@@ -274,17 +399,17 @@ export function PaperGraph({
 
       <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2">
         <span className="rounded-md border border-border bg-surface/80 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted backdrop-blur">
-          {papers.length} nodes · {validEdges.length} edges
+          {papers.length} nodes · {graphEdges.length} links
         </span>
       </div>
 
-      {categories.length > 0 && (
+      {subjects.length > 0 && (
         <div className="pointer-events-none absolute bottom-4 left-4 max-w-xs rounded-md border border-border bg-surface/80 px-3 py-2 backdrop-blur">
           <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">
-            Categories
+            Subjects
           </p>
           <ul className="flex flex-wrap gap-x-3 gap-y-1">
-            {categories.map(([name, color]) => (
+            {subjects.map(([name, color]) => (
               <li
                 key={name}
                 className="flex items-center gap-1.5 text-[11px] text-foreground/80"
@@ -301,6 +426,10 @@ export function PaperGraph({
       )}
     </div>
   );
+}
+
+function edgeKey(source: string, target: string): string {
+  return source < target ? `${source}:${target}` : `${target}:${source}`;
 }
 
 function GraphEmpty() {
