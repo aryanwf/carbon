@@ -1,8 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Paper } from "@/lib/types";
+
+import { ZoomMode } from "@embedpdf/react-pdf-viewer";
 
 const PDFViewer = dynamic(
   () => import("@embedpdf/react-pdf-viewer").then((m) => m.PDFViewer),
@@ -20,9 +22,11 @@ type Props = {
 };
 
 export function PaperReader({ paper, accessToken }: Props) {
+  const viewerHostRef = useRef<HTMLDivElement | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
 
   useEffect(() => {
     if (!paper || !accessToken) {
@@ -75,6 +79,34 @@ export function PaperReader({ paper, accessToken }: Props) {
     };
   }, [paper, accessToken]);
 
+  useEffect(() => {
+    setViewerReady(false);
+
+    if (!blobUrl) return;
+
+    const element = viewerHostRef.current;
+    if (!element) return;
+
+    let frame = 0;
+    const markReady = () => {
+      const rect = element.getBoundingClientRect();
+
+      if (rect.width > 0 && rect.height > 0) {
+        frame = requestAnimationFrame(() => setViewerReady(true));
+      }
+    };
+
+    markReady();
+
+    const observer = new ResizeObserver(markReady);
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [blobUrl]);
+
   if (!paper) {
     return (
       <div className="flex h-full items-center justify-center bg-surface-2 p-8">
@@ -113,17 +145,26 @@ export function PaperReader({ paper, accessToken }: Props) {
   }
 
   return (
-    <div className="h-full w-full bg-surface-2">
-      <PDFViewer
-        key={blobUrl}
-        className="h-full w-full"
-        style={{ height: "100%", width: "100%" }}
-        config={{
-          src: blobUrl,
-          theme: { preference: "dark" },
-          zoom: { defaultZoomLevel: 1.5 },
-        }}
-      />
+    <div ref={viewerHostRef} className="h-full w-full bg-surface-2">
+      {viewerReady ? (
+        <PDFViewer
+          key={blobUrl}
+          className="h-full w-full"
+          style={{ height: "100%", width: "100%" }}
+          config={{
+            src: blobUrl,
+            theme: { preference: "dark" },
+            zoom: { defaultZoomLevel: ZoomMode.FitPage },
+          }}
+          onReady={() => {
+            requestAnimationFrame(() => {
+              window.dispatchEvent(new Event("resize"));
+            });
+          }}
+        />
+      ) : (
+        <ReaderStatus title="Preparing reader" message="Measuring workspace." />
+      )}
     </div>
   );
 }
