@@ -1,12 +1,80 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import type { Paper } from "@/lib/types";
+
+const PDFViewer = dynamic(
+  () => import("@embedpdf/react-pdf-viewer").then((m) => m.PDFViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <ReaderStatus title="Loading viewer" message="Initializing PDF engine." />
+    ),
+  },
+);
 
 type Props = {
   paper: Paper | null;
+  accessToken: string | null;
 };
 
-export function PaperReader({ paper }: Props) {
+export function PaperReader({ paper, accessToken }: Props) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!paper || !accessToken) {
+      setBlobUrl(null);
+      setError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let createdUrl: string | null = null;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setBlobUrl(null);
+
+      try {
+        const response = await fetch(
+          `/api/papers/${encodeURIComponent(paper.id)}/pdf`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type") ?? "";
+          const message = contentType.includes("application/json")
+            ? ((await response.json()) as { error?: string }).error
+            : await response.text();
+          throw new Error(message || `Request failed (${response.status})`);
+        }
+
+        const blob = await response.blob();
+        createdUrl = URL.createObjectURL(blob);
+        setBlobUrl(createdUrl);
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        setError(e instanceof Error ? e.message : "Failed to load PDF");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => {
+      controller.abort();
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [paper, accessToken]);
+
   if (!paper) {
     return (
       <div className="flex h-full items-center justify-center bg-surface-2 p-8">
@@ -26,15 +94,47 @@ export function PaperReader({ paper }: Props) {
       </div>
     );
   }
+
+  if (loading) {
+    return <ReaderStatus title="Loading PDF" message="Fetching document." />;
+  }
+
+  if (error) {
+    return <ReaderStatus title="Could not load PDF" message={error} />;
+  }
+
+  if (!blobUrl) {
+    return (
+      <ReaderStatus
+        title="No PDF available"
+        message="This paper does not have a PDF source attached."
+      />
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 bg-surface-2 px-6 text-center">
-      <div className="inline-block rounded-full bg-[#2a2418] px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#e3bb74]">
-        PDF Reader
-      </div>
-      <p className="max-w-sm text-sm leading-6 text-muted">
-        Embedded PDF viewer mounts here for{" "}
-        <span className="text-foreground">{paper.title}</span>.
+    <div className="h-full w-full bg-surface-2">
+      <PDFViewer
+        key={blobUrl}
+        className="h-full w-full"
+        style={{ height: "100%", width: "100%" }}
+        config={{
+          src: blobUrl,
+          theme: { preference: "dark" },
+          zoom: { defaultZoomLevel: 1.5 },
+        }}
+      />
+    </div>
+  );
+}
+
+function ReaderStatus({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface-2 px-6 text-center">
+      <p className="font-display text-3xl leading-none tracking-[-0.04em] text-foreground">
+        {title}
       </p>
+      <p className="max-w-sm text-sm leading-6 text-muted">{message}</p>
     </div>
   );
 }
