@@ -132,9 +132,10 @@ export function PaperGraph({
         ids.has(c.paper_a) &&
         ids.has(c.paper_b) &&
         c.paper_a !== c.paper_b &&
+        subjectByPaperId.get(c.paper_a) === subjectByPaperId.get(c.paper_b) &&
         (c.strength ?? 0) >= MIN_EDGE_STRENGTH,
     );
-  }, [papers, connections]);
+  }, [papers, connections, subjectByPaperId]);
 
   const graphEdges = useMemo<GraphEdge[]>(() => {
     const edges: GraphEdge[] = [...validEdges];
