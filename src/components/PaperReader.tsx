@@ -154,7 +154,7 @@ export function PaperReader({ paper, accessToken }: Props) {
           config={{
             src: blobUrl,
             theme: { preference: "dark" },
-            zoom: { defaultZoomLevel: ZoomMode.FitPage },
+            zoom: { defaultZoomLevel: ZoomMode.FitWidth },
           }}
           onReady={() => {
             requestAnimationFrame(() => {
