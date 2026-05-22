@@ -19,7 +19,7 @@
 
 ## Overview
 
-Carbon turns arXiv links, PDFs, and research pages into a personal research workspace. It extracts metadata, stores papers in a shared Supabase-backed library, generates AI summaries and credibility scores, builds a similarity graph, and lets you ask grounded questions about each paper.
+Carbon turns arXiv links, PDFs, and research pages into a personal research workspace. It extracts metadata, stores papers in a shared Supabase-backed library, generates AI summaries, builds a similarity graph, and lets you ask grounded questions about each paper.
 
 The app is built with Next.js 16, React 19, Supabase Auth/Postgres/Storage, OpenRouter-hosted LLM calls, Sigma.js graph rendering, and an embedded PDF reader.
 
@@ -31,7 +31,7 @@ The app is built with Next.js 16, React 19, Supabase Auth/Postgres/Storage, Open
 - Build paper-to-paper similarity edges with embeddings and `pgvector`.
 - Explore an interactive WebGL knowledge graph powered by Sigma.js and Graphology.
 - Read PDFs in-app through a proxy route that avoids common external CORS issues.
-- Chat with individual papers using extracted paper text, summary, credibility score, and library context.
+- Chat with individual papers using extracted paper text, summary, and library context.
 - Use Google OAuth via Supabase, public profiles, follows, stars, claims, and a community activity feed.
 
 ## Tech Stack
