@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="#showcase">Showcase</a> |
   <a href="#features">Features</a> |
   <a href="#quick-start">Quick Start</a> |
   <a href="#configuration">Configuration</a> |
@@ -22,6 +23,12 @@
 Carbon turns arXiv links, PDFs, and research pages into a personal research workspace. It extracts metadata, stores papers in a shared Supabase-backed library, generates AI summaries, builds a similarity graph, and lets you ask grounded questions about each paper.
 
 The app is built with Next.js 16, React 19, Supabase Auth/Postgres/Storage, OpenRouter-hosted LLM calls, Sigma.js graph rendering, and an embedded PDF reader.
+
+## Showcase
+
+<p align="center">
+  <img src="public/showcase.png" alt="Carbon research workspace showing the paper library, PDF reader, and paper overview" width="1200" />
+</p>
 
 ## Features
 
