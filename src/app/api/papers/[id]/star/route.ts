@@ -1,13 +1,13 @@
+import { requireRequestUser } from "@/lib/auth";
 import {
   envErrorResponse,
-  requireRequestUser,
-} from "@/lib/supabase";
+  internalErrorResponse,
+  isForeignKeyError,
+} from "@/lib/http";
 import {
   getPaperCommunityState,
   setPaperStar,
 } from "@/lib/community";
-
-export const runtime = "nodejs";
 
 export async function GET(
   request: Request,
@@ -29,13 +29,7 @@ export async function GET(
       return envErrorResponse(error);
     }
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to load paper stars",
-      },
-      { status: 500 },
-    );
+    return internalErrorResponse(error, "Failed to load paper stars");
   }
 }
 
@@ -71,12 +65,10 @@ async function updateStar(
       return envErrorResponse(error);
     }
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to update paper star",
-      },
-      { status: 500 },
-    );
+    if (isForeignKeyError(error)) {
+      return Response.json({ error: "Paper not found" }, { status: 404 });
+    }
+
+    return internalErrorResponse(error, "Failed to update paper star");
   }
 }

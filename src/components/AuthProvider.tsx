@@ -8,12 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabaseBrowser } from "@/lib/supabase-client";
+import type { SessionUser } from "@/lib/auth";
 
 type AuthContextValue = {
-  session: Session | null;
-  user: User | null;
+  user: SessionUser | null;
   loading: boolean;
   error: string | null;
   signInWithGoogle: () => Promise<void>;
@@ -22,115 +20,60 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function verifiedSession(
-  storedSession: Session | null,
-): Promise<Session | null> {
-  if (!storedSession) {
-    return null;
-  }
-
-  const { data, error } = await supabaseBrowser.auth.getUser();
-
-  if (error || !data.user) {
-    return null;
-  }
-
-  return { ...storedSession, user: data.user };
-}
-
 export function AuthProvider({
   children,
-  initialSession,
+  initialUser,
+  initialError = null,
 }: {
   children: ReactNode;
-  initialSession: Session | null;
+  initialUser: SessionUser | null;
+  initialError?: string | null;
 }) {
-  const [session, setSession] = useState<Session | null>(initialSession);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(initialUser);
+  // The user is resolved on the server, so there is no client-side check.
+  const loading = false;
+  const [error, setError] = useState<string | null>(initialError);
 
   useEffect(() => {
-    let active = true;
+    // Drop ?auth_error from the address bar once it has been shown.
+    const url = new URL(window.location.href);
 
-    const syncAuth = async (storedSession: Session | null) => {
-      const nextSession = await verifiedSession(storedSession);
-
-      if (!active) return;
-
-      setSession(nextSession);
-      setError(null);
-      setLoading(false);
-    };
-
-    void (async () => {
-      const { data, error: userError } = await supabaseBrowser.auth.getUser();
-
-      if (!active) return;
-
-      if (userError || !data.user) {
-        setSession(null);
-        setError(userError?.message ?? null);
-        setLoading(false);
-        return;
-      }
-
-      const { data: sessionData, error: sessionError } =
-        await supabaseBrowser.auth.getSession();
-
-      if (!active) return;
-
-      setSession(
-        sessionData.session
-          ? { ...sessionData.session, user: data.user }
-          : null,
-      );
-      setError(sessionError?.message ?? null);
-      setLoading(false);
-    })();
-
-    const {
-      data: { subscription },
-    } = supabaseBrowser.auth.onAuthStateChange((_event, nextSession) => {
-      void syncAuth(nextSession);
-    });
-
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
+    if (url.searchParams.has("auth_error")) {
+      url.searchParams.delete("auth_error");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      session,
-      user: session?.user ?? null,
+      user,
       loading,
       error,
       signInWithGoogle: async () => {
         setError(null);
-
-        const { error: signInError } =
-          await supabaseBrowser.auth.signInWithOAuth({
-            provider: "google",
-            options: {
-              redirectTo: `${window.location.origin}/auth/callback`,
-            },
-          });
-
-        if (signInError) {
-          setError(signInError.message);
-        }
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/auth/login?next=${encodeURIComponent(next)}`);
       },
       signOut: async () => {
         setError(null);
-        const { error: signOutError } = await supabaseBrowser.auth.signOut();
 
-        if (signOutError) {
-          setError(signOutError.message);
+        try {
+          const response = await fetch("/auth/logout", { method: "POST" });
+
+          if (!response.ok) {
+            throw new Error(`Sign out failed (${response.status})`);
+          }
+
+          setUser(null);
+          window.location.assign("/");
+        } catch (signOutError) {
+          setError(
+            signOutError instanceof Error ? signOutError.message : "Sign out failed",
+          );
         }
       },
     }),
-    [error, loading, session],
+    [error, loading, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,15 +1,10 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
-import {
-  ensureUserProfile,
-  getProfileByUsername,
-} from "@/lib/community";
-import {
-  getSupabaseAdmin,
-  toAuthenticatedRequestUser,
-} from "@/lib/supabase";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getCurrentUser } from "@/lib/auth";
+import { getBannedReason } from "@/lib/bans";
+import { getDb } from "@/lib/cloudflare";
+import { getProfileByUsername, updateProfileDetails } from "@/lib/community";
 
 export const dynamic = "force-dynamic";
 
@@ -19,16 +14,12 @@ export default async function EditProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const viewer = await getCurrentUser();
 
-  if (!userData.user) {
+  if (!viewer) {
     notFound();
   }
 
-  const viewer = await ensureUserProfile(
-    toAuthenticatedRequestUser(userData.user),
-  );
   const profile = await getProfileByUsername(
     decodeURIComponent(username),
     viewer.id,
@@ -41,33 +32,27 @@ export default async function EditProfilePage({
   async function updateProfile(formData: FormData) {
     "use server";
 
-    const supabase = await createSupabaseServerClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const viewer = await getCurrentUser({ renew: true });
 
-    if (!userData.user) {
+    if (!viewer) {
       notFound();
     }
 
-    const viewer = await ensureUserProfile(
-      toAuthenticatedRequestUser(userData.user),
-    );
+    const bannedReason = await getBannedReason(getDb(), viewer);
+
+    if (bannedReason !== null) {
+      throw new Error("Account banned");
+    }
+
     const displayName = cleanText(formData.get("displayName"), 80);
     const bio = cleanText(formData.get("bio"), 280) ?? "";
     const avatarUrl = cleanUrl(formData.get("avatarUrl"));
 
-    const { error } = await getSupabaseAdmin()
-      .from("profiles")
-      .update({
-        display_name: displayName,
-        bio,
-        avatar_url: avatarUrl,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", viewer.id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await updateProfileDetails(viewer.id, {
+      display_name: displayName,
+      bio,
+      avatar_url: avatarUrl,
+    });
 
     const profilePath = `/u/${viewer.username}`;
     revalidatePath(profilePath);

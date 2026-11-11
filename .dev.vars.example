@@ -1,0 +1,5 @@
+NEXTJS_ENV=development
+OPENROUTER_API_KEY=your-openrouter-api-key
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+AUTH_SECRET=random-32-byte-hex-or-base64-string

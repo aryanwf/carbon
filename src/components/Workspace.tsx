@@ -80,11 +80,10 @@ export function Workspace({
   initialProfileUsername,
   initialProfileAvatarUrl,
 }: WorkspaceProps) {
-  const { session, user, loading, error, signInWithGoogle, signOut } = useAuth();
-  const accessTokenRef = useRef<string | null>(null);
+  const { user, loading, error, signInWithGoogle, signOut } = useAuth();
   const loadedLibraryUserIdRef = useRef<string | null>(initialLibraryUserId);
   const userId = user?.id ?? null;
-  accessTokenRef.current = session?.access_token ?? null;
+  const signedIn = user !== null;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<WorkspaceView>("reader");
@@ -129,22 +128,15 @@ export function Workspace({
       setLibraryError(null);
 
       try {
-        const accessToken = accessTokenRef.current;
-
-        if (!accessToken) {
-          throw new Error("Missing access token");
-        }
-
         const response = await fetch("/api/papers", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
           signal: controller.signal,
         });
         const contentType = response.headers.get("content-type") ?? "";
-        const payload = contentType.includes("application/json")
-          ? await response.json()
-          : { error: await response.text() };
+        const payload = (
+          contentType.includes("application/json")
+            ? await response.json()
+            : { error: await response.text() }
+        ) as PapersResponse & { error?: string };
 
         if (!response.ok) {
           throw new Error(payload.error ?? "Failed to load papers");
@@ -187,10 +179,8 @@ export function Workspace({
     );
   };
   const importPaper = async (url: string) => {
-    const accessToken = accessTokenRef.current;
-
-    if (!accessToken) {
-      setImportError("Missing access token");
+    if (!signedIn) {
+      setImportError("Sign in required");
       return false;
     }
 
@@ -202,7 +192,6 @@ export function Workspace({
       const response = await fetch("/api/papers", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
@@ -265,7 +254,7 @@ export function Workspace({
     return <AuthStatus title="Loading Carbon" message="Checking session." />;
   }
 
-  if (!session) {
+  if (!signedIn) {
     return (
       <AuthLanding
         error={error}
@@ -318,7 +307,7 @@ export function Workspace({
           ) : libraryError ? (
             <AuthStatus title="Library error" message={libraryError} />
           ) : view === "community" ? (
-            <CommunityFeed accessToken={session?.access_token ?? null} />
+            <CommunityFeed signedIn={signedIn} />
           ) : view === "graph" ? (
             <PaperGraph
               papers={papers}
@@ -327,10 +316,7 @@ export function Workspace({
               onSelect={setSelectedId}
             />
           ) : (
-            <PaperReader
-              paper={selectedPaper}
-              accessToken={session?.access_token ?? null}
-            />
+            <PaperReader paper={selectedPaper} signedIn={signedIn} />
           )}
         </div>
 
@@ -345,7 +331,7 @@ export function Workspace({
                 paper={selectedPaper}
                 tab={tab}
                 onTabChange={setTab}
-                accessToken={session?.access_token ?? null}
+                signedIn={signedIn}
               />
             </div>
           </>
@@ -522,7 +508,7 @@ function TopBar({
             {profileAvatarUrl ? (
               <span
                 className="h-full w-full bg-cover bg-center"
-                style={{ backgroundImage: `url(${profileAvatarUrl})` }}
+                style={{ backgroundImage: `url(${JSON.stringify(profileAvatarUrl)})` }}
               />
             ) : (
               <ProfileIcon />

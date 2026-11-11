@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { newId, nowIso } from "@/lib/cloudflare";
 
 export type ChatMessageRow = {
   id: string;
@@ -15,85 +15,68 @@ export type ChatInsert = {
   content: string;
 };
 
-const CHAT_SELECT = "id,paper_id,role,content,created_at";
+const CHAT_SELECT = "id, paper_id, role, content, created_at";
 
-let chatUserScoped: boolean | null = null;
-
-function isMissingUserIdColumn(error: { code?: string; message?: string } | null) {
-  if (!error) return false;
-  return (
-    error.code === "42703" ||
-    error.code === "PGRST204" ||
-    error.message?.includes("user_id") === true
-  );
-}
-
-export async function chatMessagesAreUserScoped(
-  supabase: SupabaseClient,
-): Promise<boolean> {
-  if (chatUserScoped !== null) return chatUserScoped;
-
-  const { error } = await supabase
-    .from("chat_messages")
-    .select("user_id")
-    .limit(0);
-
-  chatUserScoped = !isMissingUserIdColumn(error);
-  return chatUserScoped;
-}
-
-export async function listChatMessages(
-  supabase: SupabaseClient,
+export function listChatMessagesStatement(
+  db: D1Database,
   userId: string,
   paperId: string,
 ) {
-  const userScoped = await chatMessagesAreUserScoped(supabase);
-  let query = supabase
-    .from("chat_messages")
-    .select(CHAT_SELECT)
-    .eq("paper_id", paperId)
-    .order("created_at", { ascending: true });
-
-  if (userScoped) {
-    query = query.eq("user_id", userId);
-  }
-
-  return query;
+  return db
+    .prepare(
+      `SELECT ${CHAT_SELECT} FROM chat_messages
+       WHERE user_id = ?1 AND paper_id = ?2
+       ORDER BY created_at ASC`,
+    )
+    .bind(userId, paperId);
 }
 
-export async function listChatHistory(
-  supabase: SupabaseClient,
+export async function listChatMessages(
+  db: D1Database,
+  userId: string,
+  paperId: string,
+) {
+  const { results } = await listChatMessagesStatement(db, userId, paperId).all<ChatMessageRow>();
+  return results;
+}
+
+/** Most recent `limit` turns, newest first. */
+export function listChatHistoryStatement(
+  db: D1Database,
   userId: string,
   paperId: string,
   limit: number,
 ) {
-  const userScoped = await chatMessagesAreUserScoped(supabase);
-  let query = supabase
-    .from("chat_messages")
-    .select("role,content")
-    .eq("paper_id", paperId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (userScoped) {
-    query = query.eq("user_id", userId);
-  }
-
-  return query;
+  return db
+    .prepare(
+      `SELECT role, content FROM chat_messages
+       WHERE user_id = ?1 AND paper_id = ?2
+       ORDER BY created_at DESC
+       LIMIT ?3`,
+    )
+    .bind(userId, paperId, limit);
 }
 
-export async function insertChatMessage(
-  supabase: SupabaseClient,
-  message: ChatInsert,
-) {
-  const userScoped = await chatMessagesAreUserScoped(supabase);
-  const row = userScoped
-    ? message
-    : {
-        paper_id: message.paper_id,
-        role: message.role,
-        content: message.content,
-      };
+export async function insertChatMessage(db: D1Database, message: ChatInsert) {
+  const row = await db
+    .prepare(
+      `INSERT INTO chat_messages (id, user_id, paper_id, role, content, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+       RETURNING ${CHAT_SELECT}`,
+    )
+    .bind(
+      newId(),
+      message.user_id,
+      message.paper_id,
+      message.role,
+      message.content,
+      nowIso(),
+    )
+    .first<ChatMessageRow>();
 
-  return supabase.from("chat_messages").insert(row).select(CHAT_SELECT).single();
+  if (!row) {
+    throw new Error("Failed to save message");
+  }
+
+  return row;
 }

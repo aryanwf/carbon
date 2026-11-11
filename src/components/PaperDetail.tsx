@@ -10,12 +10,12 @@ type Props = {
   paper: Paper | null;
   tab: Tab;
   onTabChange: (t: Tab) => void;
-  accessToken: string | null;
+  signedIn: boolean;
 };
 
 const TABS: Tab[] = ["overview", "chat", "notes"];
 
-export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
+export function PaperDetail({ paper, tab, onTabChange, signedIn }: Props) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-2 border-b border-border bg-surface-2 px-6 py-5">
@@ -63,7 +63,7 @@ export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
               <p className="font-mono text-xs text-muted">
                 {paper.authors.join(", ") || "Unknown authors"}
               </p>
-              <PaperCommunityActions paper={paper} accessToken={accessToken} />
+              <PaperCommunityActions paper={paper} signedIn={signedIn} />
             </div>
 
             <div className="h-px w-full bg-border" />
@@ -85,7 +85,7 @@ export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
             </div>
           </article>
         ) : tab === "chat" ? (
-          <ChatPanel paper={paper} accessToken={accessToken} />
+          <ChatPanel paper={paper} signedIn={signedIn} />
         ) : (
           <div className="flex h-full items-center justify-center px-6 py-8">
             <p className="text-sm text-muted">
@@ -100,17 +100,17 @@ export function PaperDetail({ paper, tab, onTabChange, accessToken }: Props) {
 
 function PaperCommunityActions({
   paper,
-  accessToken,
+  signedIn,
 }: {
   paper: Paper;
-  accessToken: string | null;
+  signedIn: boolean;
 }) {
   const [state, setState] = useState<PaperCommunityState | null>(null);
   const [saving, setSaving] = useState<"star" | "claim" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!signedIn) {
       setState(null);
       return;
     }
@@ -123,7 +123,6 @@ function PaperCommunityActions({
         const response = await fetch(
           `/api/papers/${encodeURIComponent(paper.id)}/star`,
           {
-            headers: { Authorization: `Bearer ${accessToken}` },
             signal: controller.signal,
           },
         );
@@ -148,10 +147,10 @@ function PaperCommunityActions({
     })();
 
     return () => controller.abort();
-  }, [paper.id, accessToken]);
+  }, [paper.id, signedIn]);
 
   const update = async (kind: "star" | "claim") => {
-    if (!accessToken || !state || saving) return;
+    if (!signedIn || !state || saving) return;
 
     const active = kind === "star" ? state.starred : state.claimed;
     setSaving(kind);
@@ -162,7 +161,6 @@ function PaperCommunityActions({
         `/api/papers/${encodeURIComponent(paper.id)}/${kind}`,
         {
           method: active ? "DELETE" : "PUT",
-          headers: { Authorization: `Bearer ${accessToken}` },
         },
       );
       const payload = (await response.json()) as {
@@ -191,7 +189,7 @@ function PaperCommunityActions({
       <button
         type="button"
         onClick={() => void update("star")}
-        disabled={!accessToken || !state || saving !== null}
+        disabled={!signedIn || !state || saving !== null}
         className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all duration-300 ease-spring active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
           state?.starred
             ? "border-accent bg-accent text-background"
@@ -205,7 +203,7 @@ function PaperCommunityActions({
         type="button"
         onClick={() => void update("claim")}
         disabled={
-          !accessToken || !state || !state.can_claim || saving !== null
+          !signedIn || !state || !state.can_claim || saving !== null
         }
         className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all duration-300 ease-spring active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
           state?.claimed
@@ -224,7 +222,7 @@ function PaperCommunityActions({
 
 type ChatPanelProps = {
   paper: Paper;
-  accessToken: string | null;
+  signedIn: boolean;
 };
 
 type PendingMessage = {
@@ -233,7 +231,7 @@ type PendingMessage = {
   content: string;
 };
 
-function ChatPanel({ paper, accessToken }: ChatPanelProps) {
+function ChatPanel({ paper, signedIn }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingMessage | null>(null);
   const [streaming, setStreaming] = useState<string>("");
@@ -246,7 +244,7 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!signedIn) {
       setMessages([]);
       setError("Sign in required");
       return;
@@ -264,7 +262,6 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
         const response = await fetch(
           `/api/papers/${encodeURIComponent(paper.id)}/chat`,
           {
-            headers: { Authorization: `Bearer ${accessToken}` },
             signal: controller.signal,
           },
         );
@@ -293,7 +290,7 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [paper.id, accessToken]);
+  }, [paper.id, signedIn]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -304,7 +301,7 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
   const sendMessage = async () => {
     const trimmed = input.trim();
     if (!trimmed || sending) return;
-    if (!accessToken) {
+    if (!signedIn) {
       setError("Sign in required");
       return;
     }
@@ -324,7 +321,6 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
           method: "POST",
           signal: controller.signal,
           headers: {
-            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ message: trimmed }),
@@ -457,17 +453,17 @@ function ChatPanel({ paper, accessToken }: ChatPanelProps) {
             onKeyDown={onKeyDown}
             rows={1}
             placeholder={
-              accessToken
+              signedIn
                 ? "Ask about this paper…"
                 : "Sign in to chat"
             }
-            disabled={!accessToken || sending}
+            disabled={!signedIn || sending}
             className="min-h-[40px] max-h-40 flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground placeholder:text-muted focus:border-accent focus:outline-none disabled:opacity-50"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
-            disabled={!accessToken || sending || input.trim().length === 0}
+            disabled={!signedIn || sending || input.trim().length === 0}
             className="h-10 rounded-md bg-accent px-4 text-xs font-bold uppercase tracking-[0.18em] text-background transition-all duration-300 ease-spring hover:bg-[#ddd7cb] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {sending ? "…" : "Send"}

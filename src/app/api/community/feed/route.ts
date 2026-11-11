@@ -1,10 +1,7 @@
-import {
-  envErrorResponse,
-  requireRequestUser,
-} from "@/lib/supabase";
-import { ensureUserProfile, getCommunityFeed } from "@/lib/community";
+import { requireRequestUser } from "@/lib/auth";
+import { envErrorResponse, internalErrorResponse } from "@/lib/http";
+import { getCommunityFeed } from "@/lib/community";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
@@ -12,7 +9,6 @@ export async function GET(request: Request) {
   if (auth.response) return auth.response;
 
   try {
-    await ensureUserProfile(auth.user);
     const url = new URL(request.url);
     const scope = url.searchParams.get("scope");
     const activities = await getCommunityFeed({
@@ -27,12 +23,6 @@ export async function GET(request: Request) {
       return envErrorResponse(error);
     }
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to load activity",
-      },
-      { status: 500 },
-    );
+    return internalErrorResponse(error, "Failed to load activity");
   }
 }

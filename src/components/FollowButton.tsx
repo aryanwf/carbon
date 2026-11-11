@@ -7,14 +7,14 @@ type Props = {
   username: string;
   initialFollowing: boolean;
   initialFollowers: number;
-  accessToken: string | null;
+  signedIn: boolean;
 };
 
 export function FollowButton({
   username,
   initialFollowing,
   initialFollowers,
-  accessToken,
+  signedIn,
 }: Props) {
   const [following, setFollowing] = useState(initialFollowing);
   const [followers, setFollowers] = useState(initialFollowers);
@@ -22,7 +22,7 @@ export function FollowButton({
   const [error, setError] = useState<string | null>(null);
 
   const updateFollow = async () => {
-    if (!accessToken || saving) return;
+    if (!signedIn || saving) return;
 
     setSaving(true);
     setError(null);
@@ -32,7 +32,6 @@ export function FollowButton({
         `/api/profiles/${encodeURIComponent(username)}/follow`,
         {
           method: following ? "DELETE" : "PUT",
-          headers: { Authorization: `Bearer ${accessToken}` },
         },
       );
       const payload = (await response.json()) as {
@@ -62,7 +61,7 @@ export function FollowButton({
       <button
         type="button"
         onClick={() => void updateFollow()}
-        disabled={!accessToken || saving}
+        disabled={!signedIn || saving}
         className="rounded-md bg-accent px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-background transition-all duration-300 ease-spring hover:bg-[#ddd7cb] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {saving ? "Saving" : following ? "Following" : "Follow"}

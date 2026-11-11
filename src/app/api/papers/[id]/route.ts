@@ -1,10 +1,8 @@
-import {
-  envErrorResponse,
-  getSupabaseAdmin,
-  requireRequestUser,
-} from "@/lib/supabase";
-
-export const runtime = "nodejs";
+import { requireRequestUser } from "@/lib/auth";
+import { getBucket, getDb } from "@/lib/cloudflare";
+import { envErrorResponse, internalErrorResponse } from "@/lib/http";
+import { pdfObjectKey, textObjectKey } from "@/lib/papers";
+import { deletePaperVector } from "@/lib/vectors";
 
 export async function DELETE(
   request: Request,
@@ -17,58 +15,57 @@ export async function DELETE(
   }
 
   const userId = auth.user.id;
-  let supabaseAdmin;
+  const { id } = await params;
+  const paperId = decodeURIComponent(id);
 
+  let db: D1Database;
   try {
-    supabaseAdmin = getSupabaseAdmin();
+    db = getDb();
   } catch (error) {
     return envErrorResponse(error);
   }
 
-  const { id } = await params;
-  const paperId = decodeURIComponent(id);
+  let purged: boolean;
 
-  const { data: deletedUserPaper, error: deleteUserPaperError } =
-    await supabaseAdmin
-      .from("user_papers")
-      .delete()
-      .eq("user_id", userId)
-      .eq("paper_id", paperId)
-      .select("id")
-      .maybeSingle();
+  try {
+    const deleted = await db
+      .prepare(
+        "DELETE FROM user_papers WHERE user_id = ?1 AND paper_id = ?2 RETURNING id",
+      )
+      .bind(userId, paperId)
+      .first<{ id: string }>();
 
-  if (deleteUserPaperError) {
-    return Response.json(
-      { error: deleteUserPaperError.message },
-      { status: 500 },
-    );
+    if (!deleted) {
+      return Response.json({ error: "Paper not found" }, { status: 404 });
+    }
+
+    // Only a caller who actually removed a library row may purge the shared
+    // paper, and only once no library references it anymore.
+    const purgedRow = await db
+      .prepare(
+        `DELETE FROM papers
+         WHERE id = ?1
+           AND NOT EXISTS (SELECT 1 FROM user_papers WHERE paper_id = ?1)
+         RETURNING id`,
+      )
+      .bind(paperId)
+      .first<{ id: string }>();
+
+    purged = purgedRow !== null;
+  } catch (error) {
+    return internalErrorResponse(error, "Failed to delete paper");
   }
 
-  if (!deletedUserPaper) {
-    return Response.json({ error: "Paper not found" }, { status: 404 });
-  }
-
-  const { count, error: countError } = await supabaseAdmin
-    .from("user_papers")
-    .select("id", { count: "exact", head: true })
-    .eq("paper_id", paperId);
-
-  if (countError) {
-    return Response.json({ error: countError.message }, { status: 500 });
-  }
-
-  if ((count ?? 0) > 0) {
+  if (!purged) {
     return Response.json({ deleted: true, purged: false });
   }
 
-  const { error: deletePaperError } = await supabaseAdmin
-    .from("papers")
-    .delete()
-    .eq("id", paperId);
-
-  if (deletePaperError) {
-    return Response.json({ error: deletePaperError.message }, { status: 500 });
-  }
+  await Promise.all([
+    getBucket()
+      .delete([pdfObjectKey(paperId), textObjectKey(paperId)])
+      .catch((error: unknown) => console.warn("R2 cleanup failed:", error)),
+    deletePaperVector(paperId),
+  ]);
 
   return Response.json({ deleted: true, purged: true });
 }

@@ -1,28 +1,22 @@
 import { AuthProvider } from "@/components/AuthProvider";
 import { Workspace } from "@/components/Workspace";
-import { ensureUserProfile } from "@/lib/community";
+import { getCurrentUser } from "@/lib/auth";
+import { authErrorMessage } from "@/lib/auth/errors";
+import { getBannedReason } from "@/lib/bans";
+import { getDb } from "@/lib/cloudflare";
 import { getUserLibrary } from "@/lib/papers";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
-import {
-  getBannedReason,
-  toAuthenticatedRequestUser,
-} from "@/lib/supabase";
 import type { Paper, PaperConnection } from "@/lib/types";
 
 const EMPTY_PAPERS: Paper[] = [];
 const EMPTY_CONNECTIONS: PaperConnection[] = [];
 
-export default async function Home() {
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  let session = null;
-
-  if (userData.user) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    session = sessionData.session
-      ? { ...sessionData.session, user: userData.user }
-      : null;
-  }
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const [user, params] = await Promise.all([getCurrentUser(), searchParams]);
+  const authError = authErrorMessage(params.auth_error);
 
   let initialPapers = EMPTY_PAPERS;
   let initialConnections = EMPTY_CONNECTIONS;
@@ -30,37 +24,34 @@ export default async function Home() {
   let initialProfileUsername: string | null = null;
   let initialProfileAvatarUrl: string | null = null;
 
-  if (userData.user) {
-    const user = toAuthenticatedRequestUser(userData.user);
-
+  if (user) {
     try {
-      const bannedReason = await getBannedReason(user);
+      const bannedReason = await getBannedReason(getDb(), user);
 
       if (bannedReason !== null) {
         initialLibraryError = bannedReason
           ? `Account banned: ${bannedReason}`
           : "Account banned";
       } else {
-        const profile = await ensureUserProfile(user);
-        initialProfileUsername = profile.username;
-        initialProfileAvatarUrl = profile.avatar_url;
+        initialProfileUsername = user.username;
+        initialProfileAvatarUrl = user.avatar_url;
         const library = await getUserLibrary(user.id);
         initialPapers = library.papers;
         initialConnections = library.connections;
       }
     } catch (error) {
-      initialLibraryError =
-        error instanceof Error ? error.message : "Failed to load papers";
+      console.error("Failed to load papers:", error);
+      initialLibraryError = "Failed to load papers";
     }
   }
 
   return (
-    <AuthProvider initialSession={session}>
+    <AuthProvider initialUser={user} initialError={authError}>
       <Workspace
         initialPapers={initialPapers}
         initialConnections={initialConnections}
         initialLibraryError={initialLibraryError}
-        initialLibraryUserId={userData.user?.id ?? null}
+        initialLibraryUserId={user?.id ?? null}
         initialProfileUsername={initialProfileUsername}
         initialProfileAvatarUrl={initialProfileAvatarUrl}
       />

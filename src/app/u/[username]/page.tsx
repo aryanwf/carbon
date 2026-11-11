@@ -2,13 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FollowButton } from "@/components/FollowButton";
 import { ProfileActions } from "@/components/ProfileActions";
-import {
-  ensureUserProfile,
-  getCommunityFeed,
-  getProfileByUsername,
-} from "@/lib/community";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { toAuthenticatedRequestUser } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/auth";
+import { getCommunityFeed, getProfileByUsername } from "@/lib/community";
 import type { CommunityActivity } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +14,7 @@ export default async function ProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const { data: sessionData } = userData.user
-    ? await supabase.auth.getSession()
-    : { data: { session: null } };
-  const viewer = userData.user
-    ? await ensureUserProfile(toAuthenticatedRequestUser(userData.user))
-    : null;
+  const viewer = await getCurrentUser();
   const profile = await getProfileByUsername(
     decodeURIComponent(username),
     viewer?.id,
@@ -86,7 +74,7 @@ export default async function ProfilePage({
                     username={profile.username}
                     initialFollowing={Boolean(profile.is_following)}
                     initialFollowers={profile.followers_count}
-                    accessToken={sessionData.session?.access_token ?? null}
+                    signedIn={viewer !== null}
                   />
                 ) : null}
               </div>
@@ -167,7 +155,7 @@ function Avatar({ avatarUrl, label }: { avatarUrl: string | null; label: string 
       style={
         avatarUrl
           ? {
-              backgroundImage: `url(${avatarUrl})`,
+              backgroundImage: `url(${JSON.stringify(avatarUrl)})`,
               backgroundPosition: "center",
               backgroundSize: "cover",
             }

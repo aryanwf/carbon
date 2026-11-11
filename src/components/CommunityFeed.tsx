@@ -5,16 +5,16 @@ import { useEffect, useState } from "react";
 import type { CommunityActivity } from "@/lib/types";
 
 type Props = {
-  accessToken: string | null;
+  signedIn: boolean;
 };
 
-export function CommunityFeed({ accessToken }: Props) {
+export function CommunityFeed({ signedIn }: Props) {
   const [activities, setActivities] = useState<CommunityActivity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!signedIn) {
       setActivities([]);
       setError("Sign in required");
       return;
@@ -27,7 +27,6 @@ export function CommunityFeed({ accessToken }: Props) {
     (async () => {
       try {
         const response = await fetch("/api/community/feed?scope=following", {
-          headers: { Authorization: `Bearer ${accessToken}` },
           signal: controller.signal,
         });
         const payload = (await response.json()) as {
@@ -53,7 +52,7 @@ export function CommunityFeed({ accessToken }: Props) {
     })();
 
     return () => controller.abort();
-  }, [accessToken]);
+  }, [signedIn]);
 
   return (
     <section className="flex h-full flex-col">

@@ -18,10 +18,10 @@ const PDFViewer = dynamic(
 
 type Props = {
   paper: Paper | null;
-  accessToken: string | null;
+  signedIn: boolean;
 };
 
-export function PaperReader({ paper, accessToken }: Props) {
+export function PaperReader({ paper, signedIn }: Props) {
   const viewerHostRef = useRef<HTMLDivElement | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function PaperReader({ paper, accessToken }: Props) {
   const [viewerReady, setViewerReady] = useState(false);
 
   useEffect(() => {
-    if (!paper || !accessToken) {
+    if (!paper || !signedIn) {
       setBlobUrl(null);
       setError(null);
       return;
@@ -47,7 +47,6 @@ export function PaperReader({ paper, accessToken }: Props) {
         const response = await fetch(
           `/api/papers/${encodeURIComponent(paper.id)}/pdf`,
           {
-            headers: { Authorization: `Bearer ${accessToken}` },
             signal: controller.signal,
           },
         );
@@ -77,7 +76,7 @@ export function PaperReader({ paper, accessToken }: Props) {
       controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [paper, accessToken]);
+  }, [paper, signedIn]);
 
   useEffect(() => {
     setViewerReady(false);

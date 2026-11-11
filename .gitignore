@@ -32,8 +32,12 @@ yarn-error.log*
 .env*.local
 .env
 
-# vercel
-.vercel
+# cloudflare / opennext
+/.open-next/
+/.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 
 # typescript
 *.tsbuildinfo
@@ -41,8 +45,5 @@ next-env.d.ts
 
 # data
 /data/
-
-# supabase
-supabase/.temp/
 
 reference.md

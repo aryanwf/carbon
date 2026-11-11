@@ -1,3 +1,4 @@
+import { getSecret } from "@/lib/cloudflare";
 import type { BsScore } from "@/lib/types";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -106,8 +107,7 @@ export async function streamChat(
   onChunk: ChatChunkHandler,
   signal?: AbortSignal,
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is required");
+  const apiKey = getSecret("OPENROUTER_API_KEY");
 
   const response = await fetch(OPENROUTER_CHAT_URL, {
     method: "POST",

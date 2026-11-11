@@ -1,0 +1,53 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "carbon",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-11-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"workers_dev": true,
+	// Per-version preview URLs would need their own Google OAuth redirect URIs.
+	"preview_urls": false,
+	"services": [
+		{
+			// Required by OpenNext; must match "name" above.
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "carbon"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "carbon",
+			"database_id": "bbf84f8a-5a7d-4e16-9aa5-701e5f8afe4a",
+			"migrations_dir": "migrations"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "PAPERS_BUCKET",
+			"bucket_name": "carbon-papers"
+		}
+	],
+	"vectorize": [
+		{
+			"binding": "PAPER_VECTORS",
+			"index_name": "carbon-paper-vectors"
+		}
+	],
+	"ai": {
+		"binding": "AI",
+		"remote": true
+	}
+	// Secrets (set with `wrangler secret put <NAME>`; use .dev.vars locally):
+	//   OPENROUTER_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_SECRET
+}

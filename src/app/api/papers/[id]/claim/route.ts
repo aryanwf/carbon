@@ -1,13 +1,13 @@
+import { requireRequestUser } from "@/lib/auth";
 import {
   envErrorResponse,
-  requireRequestUser,
-} from "@/lib/supabase";
+  internalErrorResponse,
+  isForeignKeyError,
+} from "@/lib/http";
 import {
   getPaperCommunityState,
   setPaperClaim,
 } from "@/lib/community";
-
-export const runtime = "nodejs";
 
 export async function GET(
   request: Request,
@@ -29,13 +29,7 @@ export async function GET(
       return envErrorResponse(error);
     }
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to load paper claims",
-      },
-      { status: 500 },
-    );
+    return internalErrorResponse(error, "Failed to load paper claims");
   }
 }
 
@@ -71,12 +65,14 @@ async function updateClaim(
       return envErrorResponse(error);
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to update paper claim";
+    if (error instanceof Error && error.message.includes("Verified")) {
+      return Response.json({ error: error.message }, { status: 403 });
+    }
 
-    return Response.json(
-      { error: message },
-      { status: message.includes("Verified") ? 403 : 500 },
-    );
+    if (isForeignKeyError(error)) {
+      return Response.json({ error: "Paper not found" }, { status: 404 });
+    }
+
+    return internalErrorResponse(error, "Failed to update paper claim");
   }
 }

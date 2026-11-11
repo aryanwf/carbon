@@ -1,5 +1,6 @@
-import { load } from "cheerio";
-import { getSupabaseAdmin, type PaperRow } from "@/lib/supabase";
+import { getDb, getSecret, newId, nowIso } from "@/lib/cloudflare";
+import { getPaperFullText } from "@/lib/extract";
+import { queryPaperNeighbors, upsertPaperVector } from "@/lib/vectors";
 import type { BsScore } from "@/lib/types";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -11,32 +12,23 @@ const MATCH_THRESHOLD = 0.75;
 const MATCH_COUNT = 12;
 const MIN_CONNECTION_STRENGTH = 0.5;
 
-export type EnrichmentPaper = Pick<
-  PaperRow,
-  "id" | "title" | "authors" | "abstract" | "categories" | "pdf_url" | "source_url"
->;
+export type EnrichmentPaper = {
+  id: string;
+  title: string;
+  authors: string[];
+  abstract: string | null;
+  categories: string[];
+  pdf_url: string | null;
+  source_url: string | null;
+};
 
 export async function extractPaperText(paper: EnrichmentPaper): Promise<string> {
-  const arxivId = getArxivIdFromPaperId(paper.id);
-  if (arxivId) {
-    const html = await fetchArxivHtml(arxivId);
-    if (html) {
-      return truncate(html);
-    }
+  const fullText = await getPaperFullText(paper);
+  if (fullText) {
+    return truncate(fullText);
   }
 
-  if (paper.pdf_url) {
-    const pdfText = await fetchPdfText(paper.pdf_url);
-    if (pdfText) {
-      return truncate(pdfText);
-    }
-  }
-
-  const fallback = [
-    paper.title,
-    Array.isArray(paper.authors) ? (paper.authors as unknown[]).join(", ") : "",
-    paper.abstract ?? "",
-  ]
+  const fallback = [paper.title, paper.authors.join(", "), paper.abstract ?? ""]
     .filter(Boolean)
     .join("\n\n");
 
@@ -47,47 +39,6 @@ function truncate(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_CHARS);
 }
 
-function getArxivIdFromPaperId(id: string) {
-  if (!id.startsWith("arxiv:")) return null;
-  return id.slice("arxiv:".length);
-}
-
-async function fetchArxivHtml(arxivId: string): Promise<string | null> {
-  try {
-    const url = `https://arxiv.org/html/${arxivId}`;
-    const response = await fetch(url, { headers: { Accept: "text/html" } });
-    if (!response.ok) return null;
-    const html = await response.text();
-    const $ = load(html);
-    $("script,style,nav,header,footer,figure,svg").remove();
-    const body = $("article, main, body").first().text() || $.text();
-    return body || null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchPdfText(pdfUrl: string): Promise<string | null> {
-  try {
-    const response = await fetch(pdfUrl, {
-      headers: { Accept: "application/pdf" },
-    });
-    if (!response.ok) return null;
-
-    const bytes = Buffer.from(await response.arrayBuffer());
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(bytes) });
-    try {
-      const result = await parser.getText({ first: 12 });
-      return result.text;
-    } finally {
-      await parser.destroy();
-    }
-  } catch {
-    return null;
-  }
-}
-
 export type SummaryChunkHandler = (chunk: string) => void;
 
 export async function streamSummary(
@@ -96,7 +47,7 @@ export async function streamSummary(
   onChunk: SummaryChunkHandler,
   signal?: AbortSignal,
 ): Promise<string> {
-  const apiKey = requireApiKey("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  const apiKey = getSecret("OPENROUTER_API_KEY");
 
   const systemPrompt = `You are an expert research-paper distiller. Produce a structured Markdown summary covering:
 
@@ -162,7 +113,7 @@ export async function computeBsScore(
   text: string,
   signal?: AbortSignal,
 ): Promise<BsScore> {
-  const apiKey = requireApiKey("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  const apiKey = getSecret("OPENROUTER_API_KEY");
 
   const systemPrompt = `You rate research paper credibility ("BS Score"). For each dimension, score 0-100 where HIGHER = WORSE (more BS).
 
@@ -267,7 +218,7 @@ export async function computeEmbedding(
   text: string,
   signal?: AbortSignal,
 ): Promise<number[]> {
-  const apiKey = requireApiKey("OPENROUTER_API_KEY", process.env.OPENROUTER_API_KEY);
+  const apiKey = getSecret("OPENROUTER_API_KEY");
 
   const response = await fetch(OPENROUTER_EMBEDDINGS_URL, {
     method: "POST",
@@ -305,78 +256,70 @@ export type DiscoveredConnection = {
   relation_type: string;
 };
 
+/**
+ * Finds similar papers in Vectorize and upserts paper_connections. Returns []
+ * when Vectorize is unavailable (e.g. `next dev`). Neighbors whose paper row no
+ * longer exists (stale vectors) are skipped by the INSERT ... SELECT.
+ */
 export async function discoverConnections(
   paperId: string,
   embedding: number[],
 ): Promise<DiscoveredConnection[]> {
-  const supabaseAdmin = getSupabaseAdmin();
-
-  const { data, error } = await supabaseAdmin.rpc("match_papers", {
-    query_embedding: embedding as unknown as string,
-    exclude_id: paperId,
-    match_threshold: MATCH_THRESHOLD,
-    match_count: MATCH_COUNT,
-  });
-
-  if (error) {
-    throw new Error(`match_papers RPC failed: ${error.message}`);
-  }
-
-  const matches = ((data ?? []) as { id: string; similarity: number }[]).filter(
-    (row) => row.similarity >= MIN_CONNECTION_STRENGTH,
+  const neighbors = await queryPaperNeighbors(paperId, embedding, MATCH_COUNT);
+  const matches = neighbors.filter(
+    (match) =>
+      match.score > MATCH_THRESHOLD && match.score >= MIN_CONNECTION_STRENGTH,
   );
 
   if (matches.length === 0) return [];
 
-  const rows: DiscoveredConnection[] = matches.map((match) => {
+  const rows = matches.map((match) => {
     const [a, b] =
-      paperId < match.id ? [paperId, match.id] : [match.id, paperId];
-    return {
-      paper_a: a,
-      paper_b: b,
-      strength: round2(match.similarity),
-      relation_type: "similar",
-    };
+      paperId < match.paperId ? [paperId, match.paperId] : [match.paperId, paperId];
+    return { id: newId(), a, b, s: round2(match.score) };
   });
 
-  const { error: upsertError } = await supabaseAdmin
-    .from("paper_connections")
-    .upsert(rows, { onConflict: "paper_a,paper_b", ignoreDuplicates: false });
+  try {
+    const { results } = await getDb()
+      .prepare(
+        `INSERT INTO paper_connections (id, paper_a, paper_b, strength, relation_type, created_at)
+         SELECT json_extract(value, '$.id'), json_extract(value, '$.a'),
+                json_extract(value, '$.b'), json_extract(value, '$.s'), 'similar', ?2
+         FROM json_each(?1)
+         WHERE EXISTS (SELECT 1 FROM papers WHERE id = json_extract(value, '$.a'))
+           AND EXISTS (SELECT 1 FROM papers WHERE id = json_extract(value, '$.b'))
+         ON CONFLICT (paper_a, paper_b) DO UPDATE SET
+           strength = excluded.strength,
+           relation_type = excluded.relation_type
+         RETURNING paper_a, paper_b, strength, relation_type`,
+      )
+      .bind(JSON.stringify(rows), nowIso())
+      .all<DiscoveredConnection>();
 
-  if (upsertError) {
-    throw new Error(`Saving connections failed: ${upsertError.message}`);
+    return results;
+  } catch (error) {
+    console.error("Saving connections failed:", error);
+    throw new Error("Saving connections failed");
   }
-
-  return rows;
 }
 
+/** Stores the paper embedding in Vectorize. Returns false if Vectorize is unavailable. */
 export async function persistEmbedding(paperId: string, embedding: number[]) {
-  const { error } = await getSupabaseAdmin()
-    .from("papers")
-    .update({ embedding: embedding as unknown as string })
-    .eq("id", paperId);
-  if (error) throw new Error(error.message);
+  return upsertPaperVector(paperId, embedding);
 }
 
 export async function persistSummary(paperId: string, summary: string) {
-  const { error } = await getSupabaseAdmin()
-    .from("papers")
-    .update({ summary })
-    .eq("id", paperId);
-  if (error) throw new Error(error.message);
+  await getDb()
+    .prepare("UPDATE papers SET summary = ?1, updated_at = ?2 WHERE id = ?3")
+    .bind(summary, nowIso(), paperId)
+    .run();
 }
 
 export async function persistBsScore(paperId: string, bsScore: BsScore) {
-  const { error } = await getSupabaseAdmin()
-    .from("papers")
-    .update({ bs_score: bsScore })
-    .eq("id", paperId);
-  if (error) throw new Error(error.message);
-}
-
-function requireApiKey(name: string, value: string | undefined) {
-  if (!value) throw new Error(`${name} is required`);
-  return value;
+  await getDb()
+    .prepare("UPDATE papers SET bs_score = ?1, updated_at = ?2 WHERE id = ?3")
+    .bind(JSON.stringify(bsScore), nowIso(), paperId)
+    .run();
 }
 
 function round2(n: number) {

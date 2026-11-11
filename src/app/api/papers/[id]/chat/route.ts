@@ -1,12 +1,8 @@
-import {
-  envErrorResponse,
-  getSupabaseAdmin,
-  requireRequestUser,
-  type PaperRow,
-} from "@/lib/supabase";
+import { requireRequestUser } from "@/lib/auth";
+import { getDb } from "@/lib/cloudflare";
 import {
   insertChatMessage,
-  listChatHistory,
+  listChatHistoryStatement,
   listChatMessages,
   type ChatMessageRow,
 } from "@/lib/chat-db";
@@ -16,17 +12,14 @@ import {
   type ChatLibraryEntry,
   type ChatTurn,
 } from "@/lib/chat";
-import { extractPaperText, type EnrichmentPaper } from "@/lib/enrichment";
-import type { BsScore } from "@/lib/types";
+import { extractPaperText } from "@/lib/enrichment";
+import { envErrorResponse, internalErrorResponse, sseResponse } from "@/lib/http";
+import { parseBsScoreColumn, stringArray, type PaperRow } from "@/lib/papers";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
 const MAX_MESSAGE_CHARS = 4_000;
 const HISTORY_TURNS = 20;
-
-type ChatRow = ChatMessageRow;
 
 export async function GET(
   request: Request,
@@ -35,9 +28,9 @@ export async function GET(
   const auth = await requireRequestUser(request);
   if (auth.response) return auth.response;
 
-  let supabaseAdmin;
+  let db: D1Database;
   try {
-    supabaseAdmin = getSupabaseAdmin();
+    db = getDb();
   } catch (error) {
     return envErrorResponse(error);
   }
@@ -45,17 +38,12 @@ export async function GET(
   const { id } = await params;
   const paperId = decodeURIComponent(id);
 
-  const { data, error } = await listChatMessages(
-    supabaseAdmin,
-    auth.user.id,
-    paperId,
-  );
-
-  if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+  try {
+    const messages = await listChatMessages(db, auth.user.id, paperId);
+    return Response.json({ messages });
+  } catch (error) {
+    return internalErrorResponse(error, "Failed to load chat");
   }
-
-  return Response.json({ messages: (data ?? []) as ChatRow[] });
 }
 
 export async function POST(
@@ -65,15 +53,16 @@ export async function POST(
   const auth = await requireRequestUser(request);
   if (auth.response) return auth.response;
 
-  let supabaseAdmin;
+  let db: D1Database;
   try {
-    supabaseAdmin = getSupabaseAdmin();
+    db = getDb();
   } catch (error) {
     return envErrorResponse(error);
   }
 
   const { id } = await params;
   const paperId = decodeURIComponent(id);
+  const userId = auth.user.id;
 
   let payload: { message?: unknown };
   try {
@@ -94,191 +83,139 @@ export async function POST(
     );
   }
 
-  const { data: ownership, error: ownershipError } = await supabaseAdmin
-    .from("user_papers")
-    .select("id")
-    .eq("user_id", auth.user.id)
-    .eq("paper_id", paperId)
-    .maybeSingle();
+  let paper: PaperRow;
+  let historyRows: ChatTurn[];
+  let library: ChatLibraryEntry[];
 
-  if (ownershipError) {
-    return Response.json({ error: ownershipError.message }, { status: 500 });
-  }
-  if (!ownership) {
-    return Response.json({ error: "Paper not in library" }, { status: 404 });
-  }
+  try {
+    const [ownershipResult, paperResult, historyResult, libraryResult] =
+      await db.batch([
+        db
+          .prepare("SELECT id FROM user_papers WHERE user_id = ?1 AND paper_id = ?2")
+          .bind(userId, paperId),
+        db
+          .prepare(
+            `SELECT id, title, authors, abstract, published, categories, summary,
+                    bs_score, pdf_url, source_url
+             FROM papers WHERE id = ?1`,
+          )
+          .bind(paperId),
+        listChatHistoryStatement(db, userId, paperId, HISTORY_TURNS),
+        db
+          .prepare(
+            `SELECT p.id, p.title, p.categories
+             FROM user_papers up
+             JOIN papers p ON p.id = up.paper_id
+             WHERE up.user_id = ?1 AND up.paper_id <> ?2
+             ORDER BY up.added_at DESC
+             LIMIT 40`,
+          )
+          .bind(userId, paperId),
+      ]);
 
-  const { data: paperRow, error: paperError } = await supabaseAdmin
-    .from("papers")
-    .select(
-      "id,title,authors,abstract,categories,summary,bs_score,pdf_url,source_url",
+    if (ownershipResult.results.length === 0) {
+      return Response.json({ error: "Paper not in library" }, { status: 404 });
+    }
+
+    const row = paperResult.results[0] as PaperRow | undefined;
+    if (!row) {
+      return Response.json({ error: "Paper not found" }, { status: 404 });
+    }
+
+    paper = row;
+    historyRows = historyResult.results as ChatTurn[];
+    library = (
+      libraryResult.results as { id: string; title: string; categories: string | null }[]
     )
-    .eq("id", paperId)
-    .maybeSingle();
-
-  if (paperError) {
-    return Response.json({ error: paperError.message }, { status: 500 });
-  }
-  if (!paperRow) {
-    return Response.json({ error: "Paper not found" }, { status: 404 });
-  }
-
-  const paper = paperRow as PaperRow &
-    Pick<EnrichmentPaper, "id" | "title" | "authors" | "abstract" | "categories" | "pdf_url" | "source_url">;
-
-  const [historyResult, libraryResult, paperText] = await Promise.all([
-      listChatHistory(supabaseAdmin, auth.user.id, paperId, HISTORY_TURNS),
-      supabaseAdmin
-        .from("user_papers")
-        .select("paper_id, papers!inner(id,title,categories)")
-        .eq("user_id", auth.user.id)
-        .neq("paper_id", paperId)
-        .order("added_at", { ascending: false })
-        .limit(40),
-      extractPaperText(paper).catch(() => ""),
-    ]);
-
-  if (historyResult.error) {
-    return Response.json({ error: historyResult.error.message }, { status: 500 });
-  }
-  if (libraryResult.error) {
-    return Response.json({ error: libraryResult.error.message }, { status: 500 });
+      .filter((entry) => entry.id && entry.title)
+      .map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        categories: stringArray(entry.categories),
+      }));
+  } catch (error) {
+    return internalErrorResponse(error, "Failed to load paper");
   }
 
-  const historyRows = historyResult.data;
-  const libraryRows = libraryResult.data;
+  const authors = stringArray(paper.authors);
+  const categories = stringArray(paper.categories);
 
-  const history: ChatTurn[] = ((historyRows ?? []) as ChatTurn[])
-    .slice()
-    .reverse();
+  // Full text is cached in R2 after the first extraction, so this is usually
+  // a single R2 read.
+  const paperText = await extractPaperText({
+    id: paper.id,
+    title: paper.title,
+    authors,
+    abstract: paper.abstract,
+    categories,
+    pdf_url: paper.pdf_url,
+    source_url: paper.source_url,
+  }).catch(() => "");
 
-  const library: ChatLibraryEntry[] = ((libraryRows ?? []) as unknown[])
-    .map((row) => {
-      const r = row as {
-        papers?: { id?: string; title?: string; categories?: unknown };
-      };
-      const p = r.papers;
-      if (!p?.id || !p.title) return null;
-      return {
-        id: p.id,
-        title: p.title,
-        categories: Array.isArray(p.categories)
-          ? (p.categories as unknown[]).filter(
-              (c): c is string => typeof c === "string",
-            )
-          : [],
-      } satisfies ChatLibraryEntry;
-    })
-    .filter((entry): entry is ChatLibraryEntry => entry !== null);
+  const history: ChatTurn[] = historyRows.slice().reverse();
 
   const systemPrompt = buildSystemPrompt(
     {
       id: paper.id,
       title: paper.title,
-      authors: Array.isArray(paper.authors)
-        ? (paper.authors as unknown[]).filter(
-            (a): a is string => typeof a === "string",
-          )
-        : [],
+      authors,
       abstract: paper.abstract ?? null,
-      categories: Array.isArray(paper.categories)
-        ? (paper.categories as unknown[]).filter(
-            (c): c is string => typeof c === "string",
-          )
-        : [],
+      categories,
       summary: paper.summary ?? null,
-      bs_score: (paper.bs_score as BsScore | null) ?? null,
+      bs_score: parseBsScoreColumn(paper.bs_score),
       paper_text: paperText,
     },
     library,
   );
 
-  const { data: userMsg, error: userInsertError } = await insertChatMessage(
-    supabaseAdmin,
-    {
-      user_id: auth.user.id,
+  let userMsg: ChatMessageRow;
+  try {
+    userMsg = await insertChatMessage(db, {
+      user_id: userId,
       paper_id: paperId,
       role: "user",
       content: message,
-    },
-  );
-
-  if (userInsertError || !userMsg) {
-    return Response.json(
-      { error: userInsertError?.message ?? "Failed to save message" },
-      { status: 500 },
-    );
+    });
+  } catch (error) {
+    return internalErrorResponse(error, "Failed to save message");
   }
 
-  const abortController = new AbortController();
-  request.signal.addEventListener("abort", () => abortController.abort());
+  // A disconnect aborts the upstream completion; as before, a cancelled reply
+  // is not saved. A reply that finished streaming is saved under waitUntil.
+  return sseResponse(request, async (send, signal) => {
+    try {
+      send("user_message", userMsg);
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      let closed = false;
-      const send = (event: string, data: unknown) => {
-        if (closed) return;
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-        );
-      };
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        try {
-          controller.close();
-        } catch {}
-      };
+      const turns: ChatTurn[] = [
+        ...history,
+        { role: "user", content: message },
+      ];
+
+      const full = await streamChat(
+        systemPrompt,
+        turns,
+        (delta) => send("delta", { content: delta }),
+        signal,
+      );
 
       try {
-        send("user_message", userMsg);
-
-        const turns: ChatTurn[] = [
-          ...history,
-          { role: "user", content: message },
-        ];
-
-        const full = await streamChat(
-          systemPrompt,
-          turns,
-          (delta) => send("delta", { content: delta }),
-          abortController.signal,
-        );
-
-        const { data: assistantMsg, error: assistantInsertError } =
-          await insertChatMessage(supabaseAdmin, {
-            user_id: auth.user.id,
-            paper_id: paperId,
-            role: "assistant",
-            content: full,
-          });
-
-        if (assistantInsertError) {
-          send("error", { message: assistantInsertError.message });
-        } else if (assistantMsg) {
-          send("assistant_message", assistantMsg);
-        }
-        send("done", { ok: true });
-      } catch (error) {
-        send("error", {
-          message: error instanceof Error ? error.message : "Chat failed",
+        const assistantMsg = await insertChatMessage(db, {
+          user_id: userId,
+          paper_id: paperId,
+          role: "assistant",
+          content: full,
         });
-      } finally {
-        close();
+        send("assistant_message", assistantMsg);
+      } catch (error) {
+        console.error("Saving assistant message failed:", error);
+        send("error", { message: "Failed to save message" });
       }
-    },
-    cancel() {
-      abortController.abort();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
+      send("done", { ok: true });
+    } catch (error) {
+      if (signal.aborted) return;
+      send("error", {
+        message: error instanceof Error ? error.message : "Chat failed",
+      });
+    }
   });
 }

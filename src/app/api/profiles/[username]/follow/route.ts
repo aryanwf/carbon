@@ -1,10 +1,6 @@
-import {
-  envErrorResponse,
-  requireRequestUser,
-} from "@/lib/supabase";
-import { ensureUserProfile, setFollow } from "@/lib/community";
-
-export const runtime = "nodejs";
+import { requireRequestUser } from "@/lib/auth";
+import { envErrorResponse, internalErrorResponse } from "@/lib/http";
+import { setFollow } from "@/lib/community";
 
 export async function PUT(
   request: Request,
@@ -29,7 +25,6 @@ async function updateFollow(
   if (auth.response) return auth.response;
 
   try {
-    await ensureUserProfile(auth.user);
     const { username } = await params;
     const profile = await setFollow(
       auth.user,
@@ -43,15 +38,16 @@ async function updateFollow(
       return envErrorResponse(error);
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to update follow";
-    const status =
-      message === "Profile not found"
-        ? 404
-        : message === "Cannot follow yourself"
-          ? 400
-          : 500;
+    const message = error instanceof Error ? error.message : "";
 
-    return Response.json({ error: message }, { status });
+    if (message === "Profile not found") {
+      return Response.json({ error: message }, { status: 404 });
+    }
+
+    if (message === "Cannot follow yourself") {
+      return Response.json({ error: message }, { status: 400 });
+    }
+
+    return internalErrorResponse(error, "Failed to update follow");
   }
 }

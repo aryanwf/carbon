@@ -1,16 +1,12 @@
-import {
-  envErrorResponse,
-  requireRequestUser,
-} from "@/lib/supabase";
+import { requireRequestUser } from "@/lib/auth";
+import { envErrorResponse, internalErrorResponse, sseResponse } from "@/lib/http";
 import {
   importPaperUrls,
+  MAX_IMPORT_URLS,
   parseImportUrls,
   type ImportProgressEvent,
 } from "@/lib/paper-ingestion";
 import { getUserLibrary } from "@/lib/papers";
-
-export const runtime = "nodejs";
-export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const auth = await requireRequestUser(request);
@@ -28,9 +24,7 @@ export async function GET(request: Request) {
       return envErrorResponse(error);
     }
 
-    const message =
-      error instanceof Error ? error.message : "Failed to load papers";
-    return Response.json({ error: message }, { status: 500 });
+    return internalErrorResponse(error, "Failed to load papers");
   }
 }
 
@@ -57,61 +51,39 @@ export async function POST(request: Request) {
       return Response.json({ error: "Valid URL is required" }, { status: 400 });
     }
 
+    if (urls.length > MAX_IMPORT_URLS) {
+      return Response.json(
+        { error: `At most ${MAX_IMPORT_URLS} URLs can be imported at once` },
+        { status: 400 },
+      );
+    }
+
     const wantsStream = (request.headers.get("accept") ?? "").includes(
       "text/event-stream",
     );
 
     if (wantsStream) {
       const userId = auth.user.id;
-      const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          const encoder = new TextEncoder();
-          let closed = false;
-          const send = (event: string, data: unknown) => {
-            if (closed) return;
-            controller.enqueue(
-              encoder.encode(
-                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
-              ),
-            );
-          };
-          const close = () => {
-            if (closed) return;
-            closed = true;
-            try {
-              controller.close();
-            } catch {}
-          };
 
-          try {
-            const { papers, errors } = await importPaperUrls(
-              userId,
-              rawInput,
-              (event: ImportProgressEvent) => send("progress", event),
-            );
-            send("done", {
-              paper: papers[0] ?? null,
-              papers,
-              errors,
-            });
-          } catch (error) {
-            send("error", {
-              message:
-                error instanceof Error ? error.message : "Import failed",
-            });
-          } finally {
-            close();
-          }
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
-        },
+      // Imports keep running after a disconnect, so the abort signal is unused.
+      return sseResponse(request, async (send) => {
+        try {
+          const { papers, errors } = await importPaperUrls(
+            userId,
+            rawInput,
+            (event: ImportProgressEvent) => send("progress", event),
+          );
+          send("done", {
+            paper: papers[0] ?? null,
+            papers,
+            errors,
+          });
+        } catch (error) {
+          send("error", {
+            message:
+              error instanceof Error ? error.message : "Import failed",
+          });
+        }
       });
     }
 
@@ -135,6 +107,8 @@ export async function POST(request: Request) {
       return envErrorResponse(error);
     }
 
+    // Import errors are user-facing (database failures are already replaced
+    // with generic messages in importPaperUrl).
     const message =
       error instanceof Error ? error.message : "Failed to import paper";
     const status =
